@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 .env
 venv/
 env/
@@ -7,3 +8,31 @@ __pycache__/
 .vscode/
 .DS_Store
 Thumbs.db
+=======
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+.venv/
+
+# Environment & secrets
+.env
+*.secret
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Task / test artifacts
+*.log
+.pytest_cache/
+>>>>>>> de9343f3d6f00c97242d02fcdcdb03f2fb86043a

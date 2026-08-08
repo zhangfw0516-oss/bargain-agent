@@ -1,4 +1,13 @@
+<<<<<<< HEAD
 openai>=1.0.0
 python-dotenv
 schedule
 pytest
+=======
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+selenium>=4.15.0
+schedule>=1.2.0
+openai>=1.6.0
+python-dotenv>=1.0.0
+>>>>>>> de9343f3d6f00c97242d02fcdcdb03f2fb86043a
