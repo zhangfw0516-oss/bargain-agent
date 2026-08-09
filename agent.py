@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import os
 import json
 import re
@@ -123,4 +124,4 @@ def parse_user_instruction(user_instruction: str) -> dict:
         "target_price": 199.99,
         "frequency_minutes": 60,
     }
-
+>>>>>>> de9343f3d6f00c97242d02fcdcdb03f2fb86043a
