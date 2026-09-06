@@ -14,6 +14,8 @@ An agentic AI system to monitor bargain deals of retailers — 159.333 Computer 
 
 ## Development Plan
 
+**当前阶段 / Current work:** [每位成员的阶段 01 任务](docs/stages/01-foundation.md)。[阶段索引与滚动复盘流程](docs/stages/README.md) · [下一阶段模板](docs/stages/TEMPLATE.md)。
+
 See [分阶段开发与验收计划](DEVELOPMENT_PLAN.md) for phase checklists, team responsibilities, acceptance criteria, progress tracking, and the proposed DeepSeek integration. The plan describes pending work, not implemented features.
 
 ## Quick Start
