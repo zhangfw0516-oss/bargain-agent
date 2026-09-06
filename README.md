@@ -12,6 +12,10 @@ An agentic AI system to monitor bargain deals of retailers — 159.333 Computer 
 | Agent Dev & Test | Xiao Zhang (24009323) | 274751389@qq.com |
 | Agent Dev & Test | Wenhan Zhang (24009400) | 3384155536@qq.com |
 
+## Development Plan
+
+See [分阶段开发与验收计划](DEVELOPMENT_PLAN.md) for phase checklists, team responsibilities, acceptance criteria, progress tracking, and the proposed DeepSeek integration. The plan describes pending work, not implemented features.
+
 ## Quick Start
 
 ```bash
