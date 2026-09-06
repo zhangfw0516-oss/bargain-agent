@@ -31,10 +31,23 @@ pip install -r requirements.txt
 cp .env.example .env
 
 # Run pipeline demo
-python main.py
+python main.py --mock-demo
 ```
 
 ## Project Structure
+
+### Stage 1: LLM parser (development)
+
+For DeepSeek, configure your local `.env` with `LLM_API_BASE_URL=https://api.deepseek.com`, your `LLM_API_KEY`, and an available `LLM_MODEL` from the [official documentation](https://api-docs.deepseek.com/zh-cn/). No live-provider accuracy has been verified yet.
+
+```bash
+python main.py --instruction "Monitor headphones https://example.com/item below NZD 200 every hour"
+python -m unittest discover -s tests -v
+```
+
+The URL is illustrative. Parsing prints a validated request or clarification question; it does not fetch websites, create tasks, or send email. Answer clarifications by submitting a new complete instruction; multi-turn dialogue is not implemented. `--mock-demo` is entirely simulated.
+
+Prompt: `prompts/parse_instruction.md`; validation: `schemas.py`. Supported currencies: NZD/AUD/USD; minimum interval: 5 minutes. Tests use fake clients without API charges. JSON validation does not prove semantic accuracy; live evaluation is still required. URL validation is preliminary: future fetchers must check retailer allowlists, DNS addresses and redirects before network access. API timeout: 30 seconds with one SDK retry; malformed output returns an error, never Mock success.
 
 ```
 bargain-agent/
