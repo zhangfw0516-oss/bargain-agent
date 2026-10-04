@@ -405,9 +405,9 @@ class TestCLI(unittest.TestCase):
 
         from sources.base import Offer, ProductRef
 
-        offers = SimpleNamespace(offers=lambda ref: ([Offer("JB Hi-Fi", "219.00", "NZD", "https://jb.example.nz/p", "serpapi")],
+        detail = SimpleNamespace(offers=lambda ref: ([Offer("JB Hi-Fi", "219.00", "NZD", "https://jb.example.nz/p", "serpapi")],
                                                      ProductRef(ref.product_id, "tok2", ref.search_query, ref.title)))
-        providers = SimpleNamespace(shopping=None, supplement=None, offers=offers)
+        providers = SimpleNamespace(shopping=None, supplement=None, offers=None, detail=detail)
         import os
 
         with patch.dict(os.environ, {"DEFAULT_NOTIFY_EMAIL": "user@example.com"}), \
@@ -424,12 +424,34 @@ class TestCLI(unittest.TestCase):
         self.assertIn("1. Fitbit Charge 6", out)
         self.assertIn("[unverified merchant]", out)
         self.assertIn("JB Hi-Fi: NZD 219.00", out)
-        self.assertIn("every seller", out)
+        self.assertIn("Watching: Noel Leeming", out)
         task = self._tasks()[0]
         self.assertEqual((task["target_price"], task["currency"]), ("250.00", "NZD"))
         self.assertGreaterEqual(task["frequency_minutes"], 1440)
         source = storage.list_task_sources(task["id"], db_path=self.db_path)[0]
         self.assertEqual((source["source_kind"], source["product_id"], source["page_token"]), ("serpapi_product", "111", "tok2"))
+
+    def test_find_watches_preselected_same_product_matches(self):
+        evidence = [
+            {"id": "e3", "title": "Fitbit Charge 6 Obsidian", "merchant": "PB Tech", "price": "198.00", "currency": "NZD",
+             "product_id": "333", "link": "https://g.example/333"},
+            {"id": "e4", "title": "Fitbit Charge 6", "merchant": "Random Shop", "price": "190.00", "currency": "NZD",
+             "product_id": "444", "link": "https://g.example/444"},
+        ]
+        result = {**self.FIND_RESULT, "evidence": evidence}
+        with patch("cli.scheduler.default_verifier", return_value=None), patch("sys.stdout", new=io.StringIO()) as stdout:
+            self.assertEqual(self._run_find(["--select", "1", "--yes", "fitbit"], result=result), 0)
+        self.assertIn("[+] PB Tech", stdout.getvalue())
+        sources = storage.list_task_sources(self._tasks()[0]["id"], db_path=self.db_path)
+        self.assertEqual([s["retailer"] for s in sources], ["Noel Leeming", "PB Tech"])
+        self.assertEqual({s["search_query"] for s in sources}, {"Fitbit Charge 6"})
+
+    def test_find_no_matches_flag(self):
+        evidence = [{"id": "e3", "title": "Fitbit Charge 6", "merchant": "PB Tech", "price": "198.00", "currency": "NZD",
+                     "product_id": "333", "link": "https://g.example/333"}]
+        with patch("cli.scheduler.default_verifier", return_value=None), patch("sys.stdout", new=io.StringIO()):
+            self._run_find(["--select", "1", "--yes", "--no-matches", "fitbit"], result={**self.FIND_RESULT, "evidence": evidence})
+        self.assertEqual(len(storage.list_task_sources(self._tasks()[0]["id"], db_path=self.db_path)), 1)
 
     def test_find_single_listing_becomes_a_url_source(self):
         with patch("sys.stdout", new=io.StringIO()):

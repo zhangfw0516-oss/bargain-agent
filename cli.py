@@ -10,6 +10,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import config
+import matching
 import pipeline
 import pricing
 import scheduler
@@ -214,14 +215,27 @@ def cmd_find(args: argparse.Namespace) -> int:
 
     need = result.get("need") or {}
     product_source = bool(rec.get("monitorable"))
-    if product_source and providers.offers is not None:
+    detail = getattr(providers, "detail", None)
+    if product_source and detail is not None and rec.get("page_token"):
         try:
-            offers, fresh = providers.offers.offers(
-                ProductRef(rec.get("product_id"), rec.get("page_token"), rec.get("search_query"), rec.get("title")))
+            offers, fresh = detail.offers(ProductRef(rec.get("product_id"), rec.get("page_token"), None, rec.get("title")))
             rec["page_token"] = fresh.page_token or rec.get("page_token")
-            print(_fmt_offers(offers))
+            if offers:
+                print(_fmt_offers(offers))
         except ProviderError as exc:
             print(f"Could not list sellers right now: {exc}", file=sys.stderr)
+
+    extras: list[dict] = []
+    if product_source and not args.no_matches:
+        matches = matching.find_same_product(rec, [dict(e) for e in result.get("evidence") or []], need,
+                                             verifier=scheduler.default_verifier(), max_sources=config.monitor_max_sources())
+        if matches:
+            print("Same product at other merchants:")
+            for m in matches:
+                mark = "+" if m["preselect"] else " "
+                trust = "" if m["trusted"] else "  [unverified merchant]"
+                print(f"  [{mark}] {m['merchant']}: {m['currency']} {m['price']}{trust}")
+            extras = [m for m in matches if m["preselect"]]
 
     target = args.target_price or need.get("budget")
     if not target:
@@ -256,19 +270,20 @@ def cmd_find(args: argparse.Namespace) -> int:
         "identity": {"confirmed_title": rec["title"], **{k: need[k] for k in ("brand", "colour", "model") if need.get(k)}},
     }
     if product_source:
-        source = {"url": rec["link"], "retailer": "Google Shopping", "source_kind": storage.SOURCE_SERPAPI,
-                  "product_id": rec.get("product_id"), "page_token": rec.get("page_token"),
-                  "search_query": rec.get("search_query")}
+        query = matching.monitor_query(rec["title"]) or rec.get("search_query")
+        sources = [{"url": item["link"], "retailer": item.get("merchant") or "Google Shopping",
+                    "source_kind": storage.SOURCE_SERPAPI, "product_id": item.get("product_id"),
+                    "page_token": item.get("page_token"), "search_query": query} for item in [rec] + extras]
     else:
-        source = {"url": rec["link"], "retailer": rec.get("merchant"), "source_kind": storage.SOURCE_URL}
+        sources = [{"url": rec["link"], "retailer": rec.get("merchant"), "source_kind": storage.SOURCE_URL}]
 
     print("")
     print(_fmt_summary(task, email))
-    print("  Watching: " + ("every seller Google Shopping lists for this product" if product_source else rec["link"]))
+    print("  Watching: " + ", ".join(s["retailer"] for s in sources))
     if not args.yes and not _confirm("Create this monitoring task?"):
         print("Task creation cancelled.")
         return 3
-    task_id = storage.create_task_with_sources(task, [source], db_path=args.db_path)
+    task_id = storage.create_task_with_sources(task, sources, db_path=args.db_path)
     print(f"Created task {task_id}")
     return 0
 
@@ -663,6 +678,8 @@ def build_parser() -> argparse.ArgumentParser:
     find_parser.add_argument("--target-price", type=str, default=None, help="Alert threshold (default: the stated budget).")
     find_parser.add_argument("--comparison", type=str, default=None, choices=["lt", "lte"])
     find_parser.add_argument("--frequency-minutes", type=int, default=None, help="Check interval (default 1440).")
+    find_parser.add_argument("--no-matches", action="store_true", default=False,
+                             help="Watch only the chosen listing, not the same product at other merchants.")
     find_parser.add_argument("--yes", action="store_true", default=False, help="Skip the confirmation prompt.")
     find_parser.set_defaults(func=cmd_find)
 

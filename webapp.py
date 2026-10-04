@@ -39,6 +39,7 @@ from urllib.parse import urlparse
 
 import config
 import config_setup
+import matching
 import notifier
 import pipeline
 import pricing
@@ -66,7 +67,10 @@ class Services:
     """External collaborators. ``None`` fields are built from configuration."""
 
     find: Callable[[str], dict[str, Any]] | None = None
+    #: Product detail (SerpApi immersive: stores, shipping, store links) for previews.
     product_offers: Callable[[ProductRef], tuple[list, ProductRef]] | None = None
+    #: One extra search used when a find has too few same-product candidates.
+    extra_search: Callable[[str], list] | None = None
     observer: scheduler.Observer | None = None
     verifier: Any = scheduler._DEFAULT
     send_fn: Callable[[str, dict, dict], dict[str, Any]] | None = None
@@ -101,13 +105,22 @@ class AppState:
         )
         return pipeline.run_find(description, deps=deps)
 
-    def product_offers(self, ref: ProductRef) -> tuple[list, ProductRef]:
+    def product_detail(self, ref: ProductRef) -> tuple[list, ProductRef] | None:
+        """Store list for a product page, or None when no detail source is configured."""
         if self.services.product_offers is not None:
             return self.services.product_offers(ref)
-        providers = self._providers()
-        if providers.offers is None:
-            raise WebError(400, "Google Shopping offers are unavailable: set SERPAPI_API_KEY in .env.")
-        return providers.offers.offers(ref)
+        detail = self._providers().detail
+        return detail.offers(ref) if detail is not None else None
+
+    def extra_search(self, query: str) -> list:
+        if self.services.extra_search is not None:
+            return self.services.extra_search(query)
+        shopping = self._providers().shopping
+        return shopping.search(query, limit=40) if shopping is not None else []
+
+    def match_verifier(self):
+        verifier = self.services.verifier
+        return scheduler.default_verifier() if verifier is scheduler._DEFAULT else verifier
 
     def check_task(self, task: dict[str, Any]) -> dict[str, Any]:
         return scheduler.check_task(
@@ -158,7 +171,7 @@ class AppState:
     def store_find(self, result: dict[str, Any]) -> str:
         token = secrets.token_urlsafe(12)
         with self._lock:
-            self._finds[token] = {"result": result, "previews": {}, "confirmed": {}}
+            self._finds[token] = {"result": result, "previews": {}, "matches": {}, "confirmed": {}}
             self._finds_order.append(token)
             while len(self._finds_order) > MAX_STORED_RESULTS:
                 self._finds.pop(self._finds_order.pop(0), None)
@@ -374,36 +387,66 @@ def _recommendation(state: AppState, body: dict[str, Any]) -> tuple[str, dict[st
     return token, entry, rec
 
 
+def _listing_offer(rec: dict[str, Any]) -> dict[str, Any]:
+    return {"merchant": rec.get("merchant"), "price": rec.get("price"), "currency": rec.get("currency"),
+            "link": rec.get("link"), "provider": rec.get("provider"), "title": rec.get("title"),
+            "condition": rec.get("condition"), "in_stock": True, "shipping": None,
+            "trusted": bool(rec.get("trusted"))}
+
+
+def _matches_for(state: AppState, entry: dict[str, Any], rec: dict[str, Any], need: dict[str, Any]) -> list[dict[str, Any]]:
+    """Same product at other merchants (cached per find result and recommendation)."""
+    if rec["id"] in entry["matches"]:
+        return entry["matches"][rec["id"]]
+    pool = [dict(e) for e in entry["result"].get("evidence") or []]
+    if len(matching.rule_candidates(rec, pool, need)) < 2:
+        query = matching.monitor_query(rec.get("title") or "")
+        try:
+            extra = state.extra_search(query) if query else []
+        except ProviderError:
+            extra = []
+        known = {e.get("product_id") for e in pool}
+        for i, result in enumerate(extra, start=1):
+            if result.product_id and result.product_id not in known:
+                pool.append(pipeline._evidence_from(result, eid=f"x{i}", query=query))
+    found = matching.find_same_product(rec, pool, need, verifier=state.match_verifier(),
+                                       max_sources=config.monitor_max_sources())
+    entry["matches"][rec["id"]] = found
+    return found
+
+
 def api_find_preview(state: AppState, body: dict[str, Any]) -> dict[str, Any]:
-    """Every seller's current price for the chosen product. Nothing is written."""
+    """The chosen product's sellers and the same product at other merchants. Nothing is written."""
     _token, entry, rec = _recommendation(state, body)
     need = entry["result"].get("need") or {}
+    matches: list[dict[str, Any]] = []
     if rec.get("monitorable"):
-        cached = entry["previews"].get(rec["id"])
-        if cached is None:
-            ref = ProductRef(rec.get("product_id"), rec.get("page_token"), rec.get("search_query"), rec.get("title"))
-            try:
-                offers, fresh = state.product_offers(ref)
-            except ProviderError as exc:
-                raise WebError(502, f"Could not list sellers: {exc}") from None
-            rec["page_token"] = fresh.page_token or rec.get("page_token")
-            cached = [
-                {**o.to_dict(), "trusted": pricing.merchant_trust(o.merchant, o.link)}
-                for o in offers[: config.monitor_max_offers()]
-            ]
-            entry["previews"][rec["id"]] = cached
-        offers = cached
+        offers = entry["previews"].get(rec["id"])
+        if offers is None:
+            detail = None
+            if rec.get("page_token"):
+                try:
+                    detail = state.product_detail(ProductRef(rec.get("product_id"), rec.get("page_token"), None, rec.get("title")))
+                except ProviderError:
+                    detail = None
+            if detail and detail[0]:
+                rec["page_token"] = detail[1].page_token or rec.get("page_token")
+                offers = [{**o.to_dict(), "trusted": pricing.merchant_trust(o.merchant, o.link)}
+                          for o in detail[0][: config.monitor_max_offers()]]
+            else:
+                offers = [_listing_offer(rec)]
+            entry["previews"][rec["id"]] = offers
+        matches = _matches_for(state, entry, rec, need)
         kind = storage.SOURCE_SERPAPI
     else:
-        offers = [{"merchant": rec.get("merchant"), "price": rec.get("price"), "currency": rec.get("currency"),
-                   "link": rec.get("link"), "provider": rec.get("provider"), "title": rec.get("title"),
-                   "condition": rec.get("condition"), "in_stock": None, "trusted": True}]
+        offers = [{**_listing_offer(rec), "in_stock": None, "trusted": True}]
         kind = storage.SOURCE_URL
 
     wanted = need.get("condition")
+    candidates = offers + [m for m in matches if m.get("preselect")]
     buyable = [
-        o for o in offers
-        if o.get("price") and o.get("in_stock") is not False and o.get("trusted")
+        o for o in candidates
+        if o.get("price") and o.get("in_stock", True) is not False and o.get("trusted")
         and (not o.get("condition") or o.get("condition") == wanted)
     ]
     best = min(buyable, key=lambda o: Decimal(o["price"])) if buyable else None
@@ -414,6 +457,8 @@ def api_find_preview(state: AppState, body: dict[str, Any]) -> dict[str, Any]:
             "product_name": rec.get("title"),
             "source_kind": kind,
             "offers": offers,
+            "matches": matches,
+            "max_sources": config.monitor_max_sources(),
             "best": best,
             "suggested_target": need.get("budget") or (best or {}).get("price"),
             "currency": currency,
@@ -436,17 +481,27 @@ def api_find_confirm(state: AppState, body: dict[str, Any]) -> dict[str, Any]:
                        ("NZD", "AUD", "USD"), "currency")
     frequency = _frequency(body.get("frequency_minutes") or 1440, product_source=product_source)
     email = _require_email(state)
+    extra_ids = body.get("extra_ids") or []
+    if not isinstance(extra_ids, list) or not all(isinstance(i, str) for i in extra_ids):
+        raise WebError(400, "extra_ids must be a list of match ids.")
+    available = {m["id"]: m for m in entry["matches"].get(rec["id"], [])}
+    if any(i not in available for i in extra_ids) or (extra_ids and not product_source):
+        raise WebError(400, "Only same-product matches shown in the preview can be added.")
+    extras = [available[i] for i in dict.fromkeys(extra_ids)][: config.monitor_max_sources() - 1]
 
     def build() -> int:
         if product_source:
-            source = {
-                "url": rec["link"], "retailer": "Google Shopping", "source_kind": storage.SOURCE_SERPAPI,
-                "product_id": rec.get("product_id"), "page_token": rec.get("page_token"), "search_query": rec.get("search_query"),
-            }
+            query = matching.monitor_query(rec.get("title") or "") or rec.get("search_query")
+            sources = [
+                {"url": item["link"], "retailer": item.get("merchant") or "Google Shopping",
+                 "source_kind": storage.SOURCE_SERPAPI, "product_id": item.get("product_id"),
+                 "page_token": item.get("page_token"), "search_query": query}
+                for item in [rec] + extras
+            ]
         else:
             if not pricing.is_safe_public_url(rec.get("link")):
                 raise WebError(400, "This listing's link cannot be monitored.")
-            source = {"url": rec["link"], "retailer": rec.get("merchant"), "source_kind": storage.SOURCE_URL}
+            sources = [{"url": rec["link"], "retailer": rec.get("merchant"), "source_kind": storage.SOURCE_URL}]
         task = {
             "product_name": rec.get("title") or entry["result"].get("description"),
             "url": rec["link"],
@@ -462,7 +517,7 @@ def api_find_confirm(state: AppState, body: dict[str, Any]) -> dict[str, Any]:
                 **{k: need.get(k) for k in ("brand", "colour", "model") if need.get(k)},
             },
         }
-        return storage.create_task_with_sources(task, [source], db_path=state.db_path)
+        return storage.create_task_with_sources(task, sources, db_path=state.db_path)
 
     status, task_id = state.confirm_once(token, rec["id"], build)
     return {"created": task_id, "duplicate": status == "duplicate", "task": api_task_detail(state, task_id),

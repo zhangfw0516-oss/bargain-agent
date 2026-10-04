@@ -96,6 +96,18 @@ FIND_RESULT = {
         rec("e2", "Fitbit Inspire | Small Shop", product_id=None, merchant="small.example.nz",
             link="https://small.example.nz/inspire", trusted=False, price="99.00"),
     ],
+    "evidence": [
+        {"id": "e1", "title": "Fitbit Charge 6", "merchant": "Noel Leeming", "price": "229.00", "currency": "NZD",
+         "product_id": "111", "link": "https://www.google.co.nz/shopping/product/111", "trusted": True},
+        {"id": "e3", "title": "Fitbit Charge 6 Obsidian", "merchant": "PB Tech", "price": "198.00", "currency": "NZD",
+         "product_id": "333", "link": "https://g.example/333", "trusted": True},
+        {"id": "e4", "title": "Fitbit Charge 6", "merchant": "JB Hi-Fi", "price": "219.00", "currency": "NZD",
+         "product_id": "444", "link": "https://g.example/444", "trusted": True},
+        {"id": "e5", "title": "Fitbit Charge 6", "merchant": "Random Shop", "price": "189.00", "currency": "NZD",
+         "product_id": "555", "link": "https://g.example/555", "trusted": False},
+        {"id": "e6", "title": "Fitbit Charge 6 Band", "merchant": "Strap Shop", "price": "19.00", "currency": "NZD",
+         "product_id": "666", "link": "https://g.example/666", "trusted": False},
+    ],
     "stages": {"understand": "ok", "rewrite": "ok", "search_1": "ok", "select": "ok", "describe": "ok"},
     "notes": [],
     "usage": {"searches": 1},
@@ -113,6 +125,7 @@ class Fakes:
     def __init__(self):
         self.finds = []
         self.offer_refs = []
+        self.extra_queries = []
         self.offers_response = list(OFFERS)
         self.sent = []
         self.observations = [
@@ -130,6 +143,10 @@ class Fakes:
             raise self.offers_response
         return self.offers_response, ProductRef(ref.product_id, "tok-fresh", ref.search_query, ref.title)
 
+    def extra_search(self, query):
+        self.extra_queries.append(query)
+        return []
+
     def observer(self, source, task):
         return [dict(q) for q in self.observations]
 
@@ -139,7 +156,8 @@ class Fakes:
 
     def services(self):
         return webapp.Services(
-            find=self.find, product_offers=self.product_offers, observer=self.observer, verifier=None,
+            find=self.find, product_offers=self.product_offers, extra_search=self.extra_search,
+            observer=self.observer, verifier=None,
             send_fn=self.send, parse_task=self.parse_task,
             provider_status=lambda: {"shopping": "serpapi", "extractors": "tavily"},
         )
@@ -240,7 +258,7 @@ class TestFindFlow(WebCase):
         preview = data["preview"]
         self.assertEqual([o["merchant"] for o in preview["offers"]], ["Noel Leeming", "JB Hi-Fi", "Random Shop", "Reseller"])
         self.assertEqual([o["trusted"] for o in preview["offers"]], [True, True, False, False])
-        self.assertEqual(preview["best"]["merchant"], "JB Hi-Fi")
+        self.assertEqual(preview["best"]["merchant"], "PB Tech")  # pre-selected match at 198
         self.assertEqual(preview["suggested_target"], "250.00")
         self.assertEqual(preview["source_kind"], "serpapi_product")
         self.client.post("/api/find/preview", {"token": token, "rec_id": "e1"})
@@ -253,12 +271,53 @@ class TestFindFlow(WebCase):
         self.assertEqual(preview["source_kind"], "url")
         self.assertEqual(self.fakes.offer_refs, [])
 
-    def test_preview_provider_error_is_502(self):
+    def test_preview_detail_error_falls_back_to_the_listing(self):
         self.fakes.offers_response = RateLimited("SerpApi quota exhausted")
         token = self.find()["token"]
         status, data = self.client.post("/api/find/preview", {"token": token, "rec_id": "e1"})
-        self.assertEqual(status, 502)
-        self.assertIn("quota", data["error"])
+        self.assertEqual(status, 200)
+        self.assertEqual([o["merchant"] for o in data["preview"]["offers"]], ["Noel Leeming"])
+
+    def test_preview_lists_same_product_at_other_merchants(self):
+        token = self.find()["token"]
+        preview = self.client.post("/api/find/preview", {"token": token, "rec_id": "e1"})[1]["preview"]
+        # verifier off -> only rule-passing trusted merchants; strap and unverified shop excluded.
+        self.assertEqual([m["merchant"] for m in preview["matches"]], ["PB Tech", "JB Hi-Fi"])
+        self.assertTrue(all(m["preselect"] for m in preview["matches"]))
+        self.assertEqual(preview["max_sources"], 5)
+        self.assertEqual(self.fakes.extra_queries, [])  # enough candidates already: no extra search
+        self.assertEqual(preview["best"]["merchant"], "PB Tech")
+
+    def test_extra_search_runs_once_when_candidates_are_few(self):
+        FIND_RESULT_FEW = dict(FIND_RESULT, evidence=FIND_RESULT["evidence"][:1])
+        self.fakes.find = lambda d: json.loads(json.dumps(FIND_RESULT_FEW))
+        self.httpd.app_state.services.find = self.fakes.find
+        token = self.find()["token"]
+        self.client.post("/api/find/preview", {"token": token, "rec_id": "e1"})
+        self.client.post("/api/find/preview", {"token": token, "rec_id": "e1"})
+        self.assertEqual(self.fakes.extra_queries, ["Fitbit Charge 6"])
+
+    def test_confirm_with_matches_creates_one_task_with_several_merchants(self):
+        token = self.find()["token"]
+        matches = self.client.post("/api/find/preview", {"token": token, "rec_id": "e1"})[1]["preview"]["matches"]
+        ids = [m["id"] for m in matches]
+        data = self.client.post("/api/find/confirm", {"token": token, "rec_id": "e1", "target_price": "210", "extra_ids": ids})[1]
+        sources = storage.list_task_sources(data["created"], db_path=self.db)
+        self.assertEqual([s["retailer"] for s in sources], ["Noel Leeming", "PB Tech", "JB Hi-Fi"])
+        self.assertEqual({s["search_query"] for s in sources}, {"Fitbit Charge 6"})
+        self.assertEqual([s["product_id"] for s in sources], ["111", "333", "444"])
+
+    def test_confirm_rejects_unknown_match_ids_and_caps_sources(self):
+        token = self.find()["token"]
+        self.client.post("/api/find/preview", {"token": token, "rec_id": "e1"})
+        status, _ = self.client.post("/api/find/confirm", {"token": token, "rec_id": "e1", "target_price": "1", "extra_ids": ["e5"]})
+        self.assertEqual(status, 400)
+        status, _ = self.client.post("/api/find/confirm", {"token": token, "rec_id": "e1", "target_price": "1", "extra_ids": "e3"})
+        self.assertEqual(status, 400)
+        with patch("config.monitor_max_sources", return_value=2):
+            data = self.client.post("/api/find/confirm", {"token": token, "rec_id": "e1", "target_price": "1",
+                                                          "extra_ids": ["e3", "e4"]})[1]
+        self.assertEqual(len(storage.list_task_sources(data["created"], db_path=self.db)), 2)
 
     def test_confirm_creates_one_product_task_idempotently(self):
         token, data = self.create_product_task()
@@ -266,7 +325,7 @@ class TestFindFlow(WebCase):
         self.assertEqual((task["target_price"], task["currency"], task["frequency_minutes"]), ("230.00", "NZD", 1440))
         self.assertEqual(task["sources"][0]["source_kind"], "serpapi_product")
         source = storage.list_task_sources(data["created"], db_path=self.db)[0]
-        self.assertEqual((source["product_id"], source["search_query"]), ("111", "fitbit charge 6"))
+        self.assertEqual((source["product_id"], source["search_query"]), ("111", "Fitbit Charge 6"))
         again = self.client.post("/api/find/confirm", {"token": token, "rec_id": "e1", "target_price": "230"})[1]
         self.assertTrue(again["duplicate"])
         self.assertEqual(len(storage.list_tasks(db_path=self.db)), 1)

@@ -66,6 +66,10 @@
     <div id="previewPanel">
       <div id="previewTitle"></div>
       <table><thead><tr><th>Seller</th><th>Price</th><th>Notes</th></tr></thead><tbody id="offerRows"></tbody></table>
+      <div id="matchesBox" class="hidden">
+        <h3>Same product at other merchants <span id="matchesLimit" class="muted"></span></h3>
+        <table><thead><tr><th></th><th>Merchant</th><th>Price</th><th>Notes</th></tr></thead><tbody id="matchRows"></tbody></table>
+      </div>
       <div class="row" style="margin-top:10px">
         <label>Alert when price is
           <select id="cfComparison"><option value="lte">at or below (≤)</option><option value="lt">below (&lt;)</option></select>
@@ -273,6 +277,7 @@ async function doPreview(rec) {
     tr.appendChild(notes);
     rows.appendChild(tr);
   }
+  renderMatches(p.matches || [], p.max_sources || 1);
   $('cfTarget').value = p.suggested_target || '';
   $('cfCurrency').value = p.currency || 'NZD';
   $('cfFreq').value = p.frequency_minutes;
@@ -283,6 +288,40 @@ async function doPreview(rec) {
   $('previewSection').classList.remove('hidden');
   $('previewSection').scrollIntoView({behavior: 'smooth'});
 }
+function renderMatches(matches, maxSources) {
+  const box = $('matchesBox'), rows = $('matchRows');
+  clear(rows);
+  box.classList.toggle('hidden', matches.length === 0);
+  const limit = Math.max(0, maxSources - 1);
+  $('matchesLimit').textContent = '(watch up to ' + limit + ' more; one email per deal, for the cheapest)';
+  const update = () => {
+    const boxes = [...rows.querySelectorAll('input[type=checkbox]')];
+    const ticked = boxes.filter(b => b.checked).length;
+    boxes.forEach(b => { b.disabled = !b.checked && ticked >= limit; });
+  };
+  let ticked = 0;
+  for (const m of matches) {
+    const tr = el('tr');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.value = m.id; cb.checked = !!m.preselect && ticked < limit;
+    if (cb.checked) ticked += 1;
+    cb.onchange = update;
+    const c0 = el('td'); c0.appendChild(cb); tr.appendChild(c0);
+    const c1 = el('td'); c1.appendChild(link(m.link, m.merchant || 'merchant')); tr.appendChild(c1);
+    tr.appendChild(el('td', money(m.price, m.currency)));
+    const notes = el('td');
+    notes.appendChild(flag(m.trusted ? 'trusted' : 'unverified', m.trusted ? 'ok' : 'warn'));
+    notes.appendChild(flag(m.verified ? 'AI: same product' : 'not AI-checked', m.verified ? 'ok' : ''));
+    notes.appendChild(el('span', ' ' + (m.title || ''), 'muted'));
+    tr.appendChild(notes);
+    rows.appendChild(tr);
+  }
+  update();
+}
+function selectedMatchIds() {
+  return [...$('matchRows').querySelectorAll('input[type=checkbox]:checked')].map(b => b.value);
+}
+
 function hidePreview() { $('previewSection').classList.add('hidden'); currentRec = null; }
 
 async function doConfirm() {
@@ -292,6 +331,7 @@ async function doConfirm() {
     const data = await post('/api/find/confirm', {
       token: findToken, rec_id: currentRec.id, target_price: $('cfTarget').value,
       currency: $('cfCurrency').value, comparison: $('cfComparison').value, frequency_minutes: $('cfFreq').value,
+      extra_ids: selectedMatchIds(),
     });
     $('confirmStatus').textContent = data.duplicate ? 'Task ' + data.created + ' already exists.' : 'Created task ' + data.created + '.';
     loadTasks();
