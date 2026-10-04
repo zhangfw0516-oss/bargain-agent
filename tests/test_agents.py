@@ -94,6 +94,15 @@ class TestPriceExtractor(unittest.TestCase):
         o, _ = opts({"extract_price_from_page.md": {"product_name": "Kindle", "price": "279", "currency": "nzd", "in_stock": True}})
         self.assertEqual(price_extractor.run("Kindle $279 NZD", opts=o)["price"], "279.00")
 
+    def test_price_must_be_written_on_the_page(self):
+        o, fake = opts({"extract_price_from_page.md": [
+            {"product_name": "Dyson V8", "price": "100.00", "currency": "NZD", "in_stock": True},
+            {"product_name": "Dyson V8", "price": "424.00", "currency": "NZD", "in_stock": True},
+        ]})
+        out = price_extractor.run("Dyson V8 $424.00 NZD or 4 payments of $106.00", opts=o)
+        self.assertEqual(out["price"], "424.00")
+        self.assertIn("not written on the page", fake.calls[1]["messages"][3]["content"])
+
     def test_no_price_is_final_without_retry(self):
         o, fake = opts({"extract_price_from_page.md": {"product_name": "Kindle", "price": None, "currency": None, "in_stock": None}})
         with self.assertRaisesRegex(price_extractor.PriceExtractionError, "clear current price"):

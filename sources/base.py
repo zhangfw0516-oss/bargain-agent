@@ -311,6 +311,27 @@ def focus_text(text: str, limit: int, *, head: int = 1500, window: int = 700) ->
     return "\n…\n".join(parts)
 
 
+def price_on_page(price: str, text: str) -> bool:
+    """True when ``price`` (e.g. "1143.99") is written on the page as shown.
+
+    Accepts thousands separators and, for whole amounts, the form without cents.
+    A digit right before or after does not count ("448.00" is not inside "44800").
+    """
+    try:
+        amount = Decimal(str(price))
+    except InvalidOperation:
+        return False
+    whole = int(amount)
+    cents = f"{amount:.2f}".split(".")[1]
+    forms = {f"{whole}.{cents}", f"{whole:,}.{cents}"}
+    if cents == "00":
+        forms |= {str(whole), f"{whole:,}"}
+    for form in forms:
+        if re.search(rf"(?<![\d.,]){re.escape(form)}(?![\d])", text or ""):
+            return True
+    return False
+
+
 def clean_text(value: Any, limit: int = 300) -> str | None:
     text = " ".join(str(value or "").split())
     return text[:limit] if text else None

@@ -169,6 +169,16 @@ class TestSerpApiRecorded(unittest.TestCase):
             self.assertFalse(pricing.merchant_trust(name), name)
 
 
+class TestPriceOnPage(unittest.TestCase):
+    def test_forms(self):
+        self.assertTrue(base.price_on_page("1143.99", "Now $1,143.99 inc GST"))
+        self.assertTrue(base.price_on_page("448.00", "Price $448"))
+        self.assertTrue(base.price_on_page("448.00", "$448.00"))
+        self.assertFalse(base.price_on_page("44800.00", "$448.00"))
+        self.assertFalse(base.price_on_page("448.00", "SKU 44800"))
+        self.assertFalse(base.price_on_page("106.00", "$424.00 or 4 payments of $105.99"))
+
+
 class TestFocusText(unittest.TestCase):
     def test_keeps_prices_deep_in_long_pages(self):
         page = "Fitbit Charge 6\n" + ("menu item\n" * 5000) + "Special price $198.00 inc GST\n" + ("footer\n" * 3000)
@@ -214,7 +224,14 @@ class TestFirecrawl(unittest.TestCase):
         sender = FakeSender(load_fixture("firecrawl", "scrape_ok.json"))
         quote = Firecrawl("fc", sender=sender, timeout=5).extract("https://shop.example.nz/kindle")
         self.assertEqual((quote["price"], quote["currency"], quote["in_stock"]), ("279.00", "NZD", True))
-        self.assertEqual(sender.calls[0]["json"]["formats"], ["json"])
+        self.assertEqual(sender.calls[0]["json"]["formats"], ["json", "markdown"])
+
+    def test_structured_price_not_on_page_hands_the_page_to_the_agent(self):
+        scrape = {"success": True, "data": {"json": {"product_name": "Sony WH-1000XM5", "price": "44800.00", "currency": "NZD",
+                                                     "in_stock": True}, "markdown": "# Sony WH-1000XM5 | $448.00 | Add to cart"}}
+        page = Firecrawl("fc", sender=FakeSender(scrape), timeout=5).extract("https://shop.example.nz/sony")
+        self.assertIsInstance(page, base.PageText)
+        self.assertIn("$448.00", page.text)
 
     def test_recorded_search_keeps_the_price_in_page_text(self):
         sender = FakeSender(load_fixture("firecrawl", "search_recorded.json"))
@@ -246,19 +263,47 @@ class TestScrapeDo(unittest.TestCase):
 
         return FIXTURES.joinpath("scrapedo", "product_page.html").read_bytes()
 
-    def test_extract_returns_structured_data_and_visible_text(self):
+    def test_single_jsonld_offer_is_used_without_the_agent(self):
         from sources.scrapedo import ScrapeDo
 
         sender = FakeSender(self.html())
-        page = ScrapeDo(self.TOKEN, sender=sender, timeout=5).extract("https://shop.example.nz/fitbit")
+        result = ScrapeDo(self.TOKEN, sender=sender, timeout=5).extract("https://shop.example.nz/fitbit")
         self.assertEqual(sender.calls[0]["params"], {"token": self.TOKEN, "url": "https://shop.example.nz/fitbit", "geoCode": "nz"})
-        self.assertTrue(page.text.startswith("Structured data:"))
-        self.assertIn('"price":"198.00"', page.text)
+        self.assertEqual((result["product_name"], result["price"], result["currency"], result["in_stock"]),
+                         ("Fitbit Charge 6", "198.00", "NZD", True))
+
+    def test_page_text_when_there_is_no_usable_jsonld(self):
+        from sources.scrapedo import ScrapeDo
+
+        html = self.html().replace(b'application/ld+json', b'application/x-other')
+        page = ScrapeDo(self.TOKEN, sender=FakeSender(html), timeout=5).extract("https://shop.example.nz/fitbit")
+        self.assertIsInstance(page, base.PageText)
         self.assertIn("$198.00 inc GST", page.text)
         self.assertNotIn("window.tracking", page.text)
         self.assertNotIn("Enable JavaScript", page.text)
         self.assertIn("In stock & ready to ship", page.text)
         self.assertEqual(page.title, "Buy the Fitbit Charge 6 - Example Shop")
+
+    def test_html_to_text_puts_structured_data_first(self):
+        from sources.scrapedo import html_to_text
+
+        _title, text = html_to_text(self.html().decode())
+        self.assertTrue(text.startswith("Structured data:"))
+        self.assertIn('"price":"198.00"', text)
+
+    def test_jsonld_price_rules(self):
+        from sources.scrapedo import jsonld_price
+
+        offer = lambda price, cur="NZD", av="https://schema.org/InStock": {"@type": "Offer", "price": price, "priceCurrency": cur, "availability": av}
+        product = lambda *offers: '{"@type":"Product","name":"X","offers":%s}' % __import__("json").dumps(list(offers) if len(offers) > 1 else offers[0])
+        self.assertEqual(jsonld_price([product(offer("448"))])["price"], "448.00")
+        self.assertFalse(jsonld_price([product(offer("448", av="OutOfStock"))])["in_stock"])
+        graph = '{"@graph":[{"@type":"WebPage"},' + product(offer("99.9")) + ']}'
+        self.assertEqual(jsonld_price([graph])["price"], "99.90")
+        self.assertIsNone(jsonld_price([product(offer("448"), offer("399"))]))       # differing offers
+        self.assertIsNone(jsonld_price([product(offer("448")), product(offer("12"))]))  # several products
+        self.assertIsNone(jsonld_price([product(offer("448", cur="EUR"))]))           # unsupported currency
+        self.assertIsNone(jsonld_price(['{"@type":"Organization"}', "not json"]))
 
     def test_errors_never_leak_the_token(self):
         from sources.scrapedo import ScrapeDo

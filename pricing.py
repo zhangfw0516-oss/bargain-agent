@@ -166,7 +166,7 @@ def _observe_page(source, task, *, providers, llm_opts) -> dict[str, Any]:
         try:
             page = extractor.extract(source["url"])
             if isinstance(page, PageText):
-                extracted = price_extractor.run(page.text, opts=llm_opts)
+                extracted = price_extractor.run(page.text, url=source["url"], opts=llm_opts)
             else:
                 extracted = page
         except (ProviderError, price_extractor.PriceExtractionError, ValueError) as exc:

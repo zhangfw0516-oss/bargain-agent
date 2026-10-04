@@ -8,10 +8,13 @@ query string, so errors are rebuilt without the URL and the token is never logge
 
 from __future__ import annotations
 
+import json
+from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
-from typing import Callable
+from typing import Any, Callable
 
 import config
+from schemas import validate_price_extraction
 from sources.base import NotConfigured, PageText, Sender, Unavailable, is_http_url, request_raw
 
 ENDPOINT = "https://api.scrape.do/"
@@ -61,13 +64,75 @@ class _TextExtractor(HTMLParser):
 
 def html_to_text(html: str) -> tuple[str, str]:
     """``(title, text)`` with JSON-LD product data first, then visible text."""
+    title, text, _blocks = _parse(html)
+    return title, text
+
+
+def _parse(html: str) -> tuple[str, str, list[str]]:
     parser = _TextExtractor()
     parser.feed(html)
     lines = [" ".join(line.split()) for line in "".join(parser.parts).splitlines()]
     visible = "\n".join(line for line in lines if line)
     structured = "\n".join(block for block in parser.jsonld if '"price' in block.lower() or "product" in block.lower())
     text = (f"Structured data:\n{structured[:8000]}\n\nPage text:\n" if structured else "") + visible
-    return " ".join(parser.title.split()), text
+    return " ".join(parser.title.split()), text, parser.jsonld
+
+
+def _walk(node: Any):
+    if isinstance(node, list):
+        for item in node:
+            yield from _walk(item)
+    elif isinstance(node, dict):
+        yield node
+        for key in ("@graph", "mainEntity", "itemOffered"):
+            if key in node:
+                yield from _walk(node[key])
+
+
+def _types(node: dict) -> set[str]:
+    raw = node.get("@type")
+    values = raw if isinstance(raw, list) else [raw]
+    return {str(v).lower() for v in values if v}
+
+
+_AVAILABILITY = {"instock": True, "onlineonly": True, "limitedavailability": True, "instoreonly": None,
+                 "outofstock": False, "soldout": False, "discontinued": False, "preorder": None, "backorder": None}
+
+
+def jsonld_price(blocks: list[str]) -> dict[str, Any] | None:
+    """The page's own structured price when exactly one product offer is stated.
+
+    JSON-LD is what the merchant publishes for search engines, so it is preferred
+    over reading visible text (which can render "$448.00" as "$ 448 00"). Several
+    products or differing offers are ambiguous and return None.
+    """
+    found: set[tuple] = set()
+    for block in blocks:
+        try:
+            data = json.loads(block)
+        except (ValueError, TypeError):
+            continue
+        for node in _walk(data):
+            if "product" not in _types(node):
+                continue
+            offers = node.get("offers")
+            for offer in _walk(offers) if offers else []:
+                if not ({"offer"} & _types(offer)) and "price" not in offer:
+                    continue
+                price, currency = offer.get("price"), offer.get("priceCurrency")
+                if price in (None, "") or not currency:
+                    continue
+                availability = str(offer.get("availability") or "").rstrip("/").rsplit("/", 1)[-1].lower()
+                found.add((str(node.get("name") or "").strip(), str(price), str(currency).upper(),
+                           _AVAILABILITY.get(availability)))
+    if len({(p, c) for _, p, c, _ in found}) != 1:
+        return None
+    name, price, currency, in_stock = sorted(found)[0]
+    try:
+        return validate_price_extraction({"product_name": name or "Product", "price": f"{Decimal(price):.2f}",
+                                          "currency": currency, "in_stock": in_stock})
+    except (ValueError, InvalidOperation):
+        return None
 
 
 class ScrapeDo:
@@ -89,7 +154,7 @@ class ScrapeDo:
     def is_configured(self) -> bool:
         return bool(self._api_key)
 
-    def extract(self, url: str) -> PageText:
+    def extract(self, url: str) -> PageText | dict[str, Any]:
         if not self._api_key:
             raise NotConfigured("Scrape.do is not configured (missing SCRAPEDO_API_KEY).")
         if not is_http_url(url):
@@ -101,7 +166,10 @@ class ScrapeDo:
             params={"token": self._api_key, "url": url, "geoCode": "nz"}, timeout=self._timeout,
         )
         html = body.decode("utf-8", errors="replace")
-        title, text = html_to_text(html)
+        title, text, blocks = _parse(html)
+        structured = jsonld_price(blocks)
+        if structured is not None:
+            return structured
         if not text.strip():
             raise Unavailable("Scrape.do returned a page without readable text.")
         return PageText(url=url, text=text[:MAX_PAGE_CHARS], provider=NAME, title=title or None)

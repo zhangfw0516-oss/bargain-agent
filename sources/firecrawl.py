@@ -15,6 +15,7 @@ from typing import Any, Callable
 import config
 from schemas import validate_price_extraction
 from sources.base import (
+    PageText,
     NotConfigured,
     ShoppingResult,
     Sender,
@@ -22,6 +23,7 @@ from sources.base import (
     clean_text,
     detect_condition,
     is_http_url,
+    price_on_page,
     request_json,
 )
 
@@ -45,8 +47,10 @@ PRICE_SCHEMA = {
 PRICE_PROMPT = (
     "Extract the single product sold on this page and the price a consumer pays now. "
     "When the page shows both a price excluding tax (+GST, ex GST) and one including tax "
-    "(inc GST), use the tax-inclusive price. Use null for anything the page does not "
-    "state. Never guess a price."
+    "(inc GST), use the tax-inclusive price. Ignore instalment or finance amounts "
+    "(Afterpay, Laybuy, '4 payments of', per week/month) and was/RRP prices. Copy the "
+    "price as shown on the page, never in cents. Use null for anything the page does "
+    "not state. Never guess a price."
 )
 
 
@@ -125,12 +129,20 @@ class Firecrawl:
             raise ValueError("Only http(s) URLs can be extracted.")
         data = self._post(
             "/scrape",
-            {"url": url, "formats": ["json"], "jsonOptions": {"schema": PRICE_SCHEMA, "prompt": PRICE_PROMPT}},
+            {"url": url, "formats": ["json", "markdown"], "onlyMainContent": True,
+             "jsonOptions": {"schema": PRICE_SCHEMA, "prompt": PRICE_PROMPT}},
         )
-        extracted = (data.get("data") or {}).get("json")
-        if not isinstance(extracted, dict):
-            raise Unavailable("Firecrawl returned no structured data for the page.")
+        body = data.get("data") or {}
+        markdown = str(body.get("markdown") or "").strip()
+        extracted = body.get("json")
         try:
-            return validate_price_extraction({k: extracted.get(k) for k in PRICE_SCHEMA["properties"]})
-        except ValueError as exc:
+            result = validate_price_extraction({k: (extracted or {}).get(k) for k in PRICE_SCHEMA["properties"]})
+        except (ValueError, AttributeError) as exc:
+            if markdown:
+                return PageText(url=url, text=markdown[:MAX_PAGE_CHARS], provider=NAME)
             raise Unavailable(f"Firecrawl extraction failed validation: {exc}") from None
+        if markdown and not price_on_page(result["price"], markdown):
+            # The structured price is not written on the page (e.g. read in cents):
+            # let the price-extractor agent read the page text instead.
+            return PageText(url=url, text=markdown[:MAX_PAGE_CHARS], provider=NAME)
+        return result

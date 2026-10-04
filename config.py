@@ -249,7 +249,7 @@ def scrapedo_timeout() -> float:
     return _finite_positive_float(_get("SCRAPEDO_TIMEOUT"), "60.0", "SCRAPEDO_TIMEOUT")
 
 
-PAGE_EXTRACTOR_NAMES = ("firecrawl", "tavily", "scrapedo")
+PAGE_EXTRACTOR_NAMES = ("scrapedo", "firecrawl", "tavily")
 
 
 def page_extractors() -> list[str]:

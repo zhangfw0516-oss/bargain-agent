@@ -272,7 +272,7 @@ def build_graph(deps: FindDeps):
                     continue
                 extractions += 1
                 try:
-                    extracted = price_extractor.run(result.page_text, opts=deps.llm_for(price_extractor.NAME))
+                    extracted = price_extractor.run(result.page_text, url=result.link, opts=deps.llm_for(price_extractor.NAME))
                 except price_extractor.PriceExtractionError:
                     continue
                 item.update(price=extracted["price"], currency=extracted["currency"], price_source="page_extract")

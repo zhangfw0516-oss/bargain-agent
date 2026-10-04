@@ -14,8 +14,9 @@ Fields:
 - price: the product's current sale price as a positive decimal string with at most
   two decimal places, e.g. "239.00". Strip currency symbols and thousands separators.
   If no single current price is clearly stated, use null.
-- currency: NZD, AUD or USD only. A bare $ is ambiguous; use null unless the page
-  states the currency. Use null if the price is missing.
+- currency: NZD, AUD or USD only. A bare $ is ambiguous: use NZD when the first line
+  says "Page URL:" with a .nz domain (e.g. .co.nz), the currency the page states
+  otherwise, and null when neither applies. Use null if the price is missing.
 - in_stock: true when the page indicates the item is in stock / available to buy,
   false when it indicates out of stock, otherwise null. Never guess.
 - brand: the product's brand name if the page states one, otherwise null.
@@ -29,6 +30,11 @@ Rules:
   explicitly present in the page text.
 - If several prices appear (a discount plus a "from $X" range) and the page clearly
   labels one as the current price, use that one; otherwise use null.
+- Never use an instalment or finance amount ("4 payments of $X", Afterpay, Laybuy,
+  Zip, Klarna, "$X/wk", "per week", "per month") or a "was", "RRP" or struck-through
+  price. Use the current selling price for buying the item outright.
+- Copy the price as it appears on the page (digits only); never convert units or
+  multiply. If the page only states it in cents, use null.
 - Use the price a consumer pays. When the page shows a price excluding tax
   ("+GST", "ex GST", "excl. GST") and one including tax ("inc GST"), use the
   tax-inclusive price.
