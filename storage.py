@@ -73,6 +73,7 @@ def _fetchall(db_path: Path | None, sql: str, params: tuple = ()) -> list[dict[s
 
 
 def init_db(db_path: Path | None = None) -> None:
+    backup_before_migration(db_path)
     with _transaction(db_path) as conn:
         conn.executescript(
             """
@@ -181,6 +182,82 @@ def init_db(db_path: Path | None = None) -> None:
         # task", so re-running never duplicates and never touches tasks that already
         # have sources.
         _backfill_sources(conn)
+        _migrate_v1(conn)
+
+
+#: Schema version written to ``PRAGMA user_version``.
+SCHEMA_VERSION = 1
+#: Source kinds after v1. Older rows used retailer_adapter / web_search.
+SOURCE_SERPAPI = "serpapi_product"
+SOURCE_URL = "url"
+
+
+def _migrate_v1(conn: sqlite3.Connection) -> None:
+    """SerpApi/multi-seller schema. Idempotent; runs inside init_db's transaction."""
+    _ensure_column(conn, "task_sources", "product_id", "product_id TEXT")
+    _ensure_column(conn, "task_sources", "page_token", "page_token TEXT")
+    _ensure_column(conn, "task_sources", "search_query", "search_query TEXT")
+    _ensure_column(conn, "task_sources", "consecutive_empty", "consecutive_empty INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "quotes", "condition", "condition TEXT")
+    _ensure_column(conn, "quotes", "identity_verdict", "identity_verdict TEXT")
+    _ensure_column(conn, "quotes", "check_run_id", "check_run_id TEXT")
+    _ensure_column(conn, "quotes", "trusted", "trusted INTEGER")
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS offer_verdicts (
+            task_id INTEGER NOT NULL,
+            offer_hash TEXT NOT NULL,
+            verdict TEXT NOT NULL,
+            reason TEXT,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(task_id, offer_hash)
+        );
+
+        CREATE TABLE IF NOT EXISTS api_usage (
+            day TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            calls INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY(day, provider)
+        );
+        """
+    )
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version < 1:
+        # Retailer-adapter and web-search sources both point at product detail pages,
+        # which v1 reads through the page-extractor chain. Enabled flags are kept.
+        conn.execute(
+            "UPDATE task_sources SET source_kind = ?, "
+            "last_error = COALESCE(last_error, 'Migrated: now checked through the page extractor.') "
+            "WHERE source_kind IN ('retailer_adapter', 'web_search')",
+            (SOURCE_URL,),
+        )
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+
+def backup_before_migration(db_path: Path | None = None) -> Path | None:
+    """Copy an existing pre-v1 database to ``<db>.pre-v1.bak`` once. Returns the path."""
+    path = Path(str(db_path)) if db_path is not None else config.database_path()
+    if not path.exists() or path.stat().st_size == 0:
+        return None
+    backup = path.with_name(path.name + ".pre-v1.bak")
+    if backup.exists():
+        return None
+    source = sqlite3.connect(str(path))
+    try:
+        version = source.execute("PRAGMA user_version").fetchone()[0]
+        has_tasks = source.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tasks'"
+        ).fetchone()
+        if version >= SCHEMA_VERSION or not has_tasks:
+            return None
+        target = sqlite3.connect(str(backup))
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+    finally:
+        source.close()
+    return backup
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
@@ -225,8 +302,8 @@ def _backfill_sources(conn: sqlite3.Connection) -> None:
         conn.execute(
             """
             INSERT OR IGNORE INTO task_sources
-            (task_id, retailer, url, enabled, created_at, updated_at)
-            VALUES (?, ?, ?, 1, ?, ?)
+            (task_id, retailer, url, source_kind, enabled, created_at, updated_at)
+            VALUES (?, ?, ?, 'url', 1, ?, ?)
             """,
             (row["id"], _host_of(url), url, now, now),
         )
@@ -252,9 +329,9 @@ def create_task_with_sources(
     Falls back to the task URL when no source is given, so every task always has at
     least one source and the checking path never has to special-case legacy rows.
 
-    A source entry may carry ``source_kind`` (``retailer_adapter`` for the built-in
-    shops, ``web_search`` for a URL found by web search). Anything unspecified is
-    the built-in-shop path — old callers keep their behaviour.
+    A source entry may carry ``source_kind``: ``serpapi_product`` (a Google Shopping
+    product whose sellers are re-listed on each check; also ``product_id``,
+    ``page_token`` and ``search_query``) or ``url`` (one product page, the default).
     """
     now = _now()
     chosen = sources or [{"url": task["url"], "retailer": _host_of(task["url"])}]
@@ -293,14 +370,18 @@ def create_task_with_sources(
             conn.execute(
                 """
                 INSERT OR IGNORE INTO task_sources
-                (task_id, retailer, url, source_kind, enabled, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 1, ?, ?)
+                (task_id, retailer, url, source_kind, product_id, page_token, search_query,
+                 enabled, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                 """,
                 (
                     task_id,
                     source.get("retailer") or _host_of(url),
                     url,
-                    source.get("source_kind") or "retailer_adapter",
+                    source.get("source_kind") or SOURCE_URL,
+                    source.get("product_id"),
+                    source.get("page_token"),
+                    source.get("search_query"),
                     now,
                     now,
                 ),
@@ -408,8 +489,8 @@ def save_quote(
             """
             INSERT INTO quotes
             (task_id, source_id, fetched_at, price, currency, in_stock, product_name,
-             retailer, url, error, response_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             retailer, url, error, response_ms, condition, identity_verdict, check_run_id, trusted)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 task_id,
@@ -423,6 +504,10 @@ def save_quote(
                 quote.get("url"),
                 quote.get("error"),
                 quote.get("response_ms"),
+                quote.get("condition"),
+                quote.get("identity_verdict"),
+                quote.get("check_run_id"),
+                None if quote.get("trusted") is None else (1 if quote.get("trusted") else 0),
             ),
         )
         return int(cursor.lastrowid)
@@ -437,7 +522,7 @@ def add_task_source(
     url: str,
     retailer: str | None = None,
     db_path: Path | None = None,
-    source_kind: str = "retailer_adapter",
+    source_kind: str = SOURCE_URL,
 ) -> int:
     """Attach a source to a task. The same URL cannot be attached twice."""
     now = _now()
@@ -534,6 +619,84 @@ def record_source_check(
             "UPDATE task_sources SET last_checked_at = ?, last_error = ?, updated_at = ? WHERE id = ?",
             (now, error, now, source_id),
         )
+
+
+def update_source_ref(source_id: int, *, page_token: str | None, db_path: Path | None = None) -> None:
+    """Store a refreshed Google Shopping page token for a product source."""
+    with _transaction(db_path) as conn:
+        conn.execute(
+            "UPDATE task_sources SET page_token = ?, updated_at = ? WHERE id = ?",
+            (page_token, _now(), source_id),
+        )
+
+
+def record_source_empty(source_id: int, empty: bool, db_path: Path | None = None) -> int:
+    """Count consecutive checks in which a product source listed no offers."""
+    with _transaction(db_path) as conn:
+        if empty:
+            conn.execute(
+                "UPDATE task_sources SET consecutive_empty = consecutive_empty + 1 WHERE id = ?", (source_id,)
+            )
+        else:
+            conn.execute("UPDATE task_sources SET consecutive_empty = 0 WHERE id = ?", (source_id,))
+        row = conn.execute("SELECT consecutive_empty FROM task_sources WHERE id = ?", (source_id,)).fetchone()
+        return int(row[0]) if row else 0
+
+
+# --------------------------------------------------------------------------- v1: verdicts, usage
+
+
+def get_offer_verdicts(task_id: int, hashes: list[str], db_path: Path | None = None) -> dict[str, tuple[str, str | None]]:
+    if not hashes:
+        return {}
+    marks = ",".join("?" for _ in hashes)
+    rows = _fetchall(
+        db_path,
+        f"SELECT offer_hash, verdict, reason FROM offer_verdicts WHERE task_id = ? AND offer_hash IN ({marks})",
+        (task_id, *hashes),
+    )
+    return {row["offer_hash"]: (row["verdict"], row["reason"]) for row in rows}
+
+
+def save_offer_verdicts(
+    task_id: int, verdicts: dict[str, tuple[str, str | None]], db_path: Path | None = None
+) -> None:
+    now = _now()
+    with _transaction(db_path) as conn:
+        for offer_hash, (verdict, reason) in verdicts.items():
+            conn.execute(
+                "INSERT OR REPLACE INTO offer_verdicts (task_id, offer_hash, verdict, reason, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (task_id, offer_hash, verdict, reason, now),
+            )
+
+
+def _today() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def count_api_call(provider: str, daily_limit: int | None = None, db_path: Path | None = None) -> bool:
+    """Atomically record one billable call. False (nothing recorded) at the daily limit."""
+    day = _today()
+    with _transaction(db_path) as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO api_usage (day, provider, calls) VALUES (?, ?, 0)", (day, provider)
+        )
+        if daily_limit is None:
+            cursor = conn.execute(
+                "UPDATE api_usage SET calls = calls + 1 WHERE day = ? AND provider = ?", (day, provider)
+            )
+        else:
+            cursor = conn.execute(
+                "UPDATE api_usage SET calls = calls + 1 WHERE day = ? AND provider = ? AND calls < ?",
+                (day, provider, int(daily_limit)),
+            )
+        return int(cursor.rowcount) == 1
+
+
+def api_usage_today(db_path: Path | None = None) -> dict[str, int]:
+    rows = _fetchall(db_path, "SELECT provider, calls FROM api_usage WHERE day = ?", (_today(),))
+    return {row["provider"]: int(row["calls"]) for row in rows}
 
 
 def list_quotes(

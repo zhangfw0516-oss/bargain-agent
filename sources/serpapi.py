@@ -166,11 +166,15 @@ def _shopping_result(item: Any, locale: dict[str, str]) -> ShoppingResult | None
     )
 
 
+_OUT_OF_STOCK = ("out of stock", "sold out", "unavailable", "currently unavailable")
+
+
 def _offer(merchant: Any, title: Any, raw_price: Any, extracted: Any, link: Any, condition_text: Any, locale) -> Offer | None:
     name = clean_text(merchant, 80)
     if not name:
         return None
     price, currency = parse_price(raw_price, extracted, default_dollar=_dollar_default(locale))
+    details = str(condition_text or "").lower()
     return Offer(
         merchant=name,
         price=price,
@@ -179,6 +183,9 @@ def _offer(merchant: Any, title: Any, raw_price: Any, extracted: Any, link: Any,
         provider=NAME,
         title=clean_text(title),
         condition=detect_condition(condition_text, title),
+        # Google Shopping lists offers a merchant currently sells; an explicit
+        # out-of-stock note is the only availability signal it carries.
+        in_stock=not any(marker in details for marker in _OUT_OF_STOCK),
     )
 
 

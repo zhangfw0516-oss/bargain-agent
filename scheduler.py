@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -17,20 +18,21 @@ from typing import Any, Callable
 import schedule
 
 import config
-import discovery
+import llm
 import notifier
-import scraper
+import pricing
 import storage
+from agents import offer_verifier
+from agents.offer_verifier import DIFFERENT, NEEDS_CONFIRMATION, SAME, UNVERIFIED
 
 logger = logging.getLogger(__name__)
 
 SCHEDULE_TAG = "bargain-agent"
 
-#: The import-time default quote fetcher. The web-search source path swaps in the
-#: host-restricted fetcher only when the caller did not inject a custom one
-#: (demo/tests inject their own), so the identity check uses this captured object
-#: rather than the current module attribute (which tests may patch).
-_DEFAULT_QUOTE_FETCHER = scraper.fetch_quote
+#: ``(source_row, task_row) -> [quote, ...]``; one source may yield many sellers.
+Observer = Callable[[dict[str, Any], dict[str, Any]], list[dict[str, Any]]]
+#: ``(product, offers) -> AgentResult`` with ``{offer_id: (verdict, reason)}``.
+Verifier = Callable[[dict[str, Any], list[dict[str, Any]]], Any]
 
 # At most one TaskScheduler may run in this process, and it runs once: the scheduler
 # is not restartable in-process. Coordination *between* processes is done by
@@ -126,12 +128,7 @@ def is_deal(task: dict[str, Any], quote: dict[str, Any]) -> bool:
 
 
 def task_identity(task: dict[str, Any]) -> dict[str, Any] | None:
-    """The confirmed product identity stored at multi-source task creation, or None.
-
-    Legacy single-URL tasks carry no identity, which means "created before the
-    discovery flow existed" — the detail URL *was* the user's confirmation, so no
-    extra identity gate applies.
-    """
+    """The product identity stored when the task was confirmed (title, constraints)."""
     raw = task.get("identity_json")
     if not raw:
         return None
@@ -142,116 +139,97 @@ def task_identity(task: dict[str, Any]) -> dict[str, Any] | None:
     return identity if isinstance(identity, dict) else None
 
 
-def quote_identity_verdict(identity: dict[str, Any] | None, quote: dict[str, Any]) -> str:
-    """Classify a fetched quote against the task's confirmed identity.
+def _offer_hash(quote: dict[str, Any]) -> str:
+    key = "|".join(str(quote.get(f) or "").strip().lower() for f in ("retailer", "product_name", "condition"))
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:24]
 
-    Returns ``discovery.MATCH_SAME``, ``MATCH_NEEDS_CONFIRMATION`` or
-    ``MATCH_DIFFERENT``:
 
-    - The quote name must contain **every** significant model token of the
-      confirmed product — one shared word ("Google Fitbit Charge 6 Black" shares
-      only "fitbit") is never enough. Missing tokens are needs_confirmation, so a
-      wrong-model page can neither trigger a deal nor end one. The quote's own
-      structured ``brand``/``variant`` (same selected JSON-LD product) may stand in
-      for tokens the page name omits; the search card never does.
-    - A quote whose name contradicts its own structured ``brand``/``variant`` — the
-      name says "Bose" while the brand says "Sony", or the name says 30 ml while the
-      variant says 60 ml — is **different**: the contradiction cannot be hidden by
-      concatenation. Complementary fields (name omits the brand, the structured brand
-      supplies it) are not a conflict and still confirm.
-    - A generation digit directly following a model token ("Fitbit Air 2") that
-      the confirmed product does not carry is **different**.
-    - An accessory word the user never asked for — on names of **all** lengths —
-      is **different**, except for :data:`FEATURE_PHRASES` ("battery life") and
-      contextual body nouns ("... for Blemish-Prone Skin"), which are products.
-    - Colour and capacity (explicitly requested *or* inferred from the confirmed
-      title) must agree; a stated different value is **different**, an unstated
-      one is needs_confirmation.
-    - ``identity is None`` (legacy single-URL task) is always same.
+def assign_identity_verdicts(
+    task: dict[str, Any],
+    observations: list[dict[str, Any]],
+    *,
+    verifier: Verifier | None,
+    db_path: Path | None = None,
+) -> None:
+    """Set ``identity_verdict`` on every usable observation, in place.
+
+    1. Deterministic pre-filter: a used/refurbished offer the task did not ask for
+       is ``different`` with no AI call.
+    2. A page the user pasted (``url`` source) is the user's own confirmation:
+       ``same``.
+    3. Offers of a Google Shopping product default to ``same`` (Google's product id
+       is the identity); the offer-verifier agent may only downgrade them. Verdicts
+       are cached per offer, so unchanged offers cost no model calls. Without a
+       verdict (agent off or failing) an offer is ``unverified``.
     """
-    if identity is None:
-        return discovery.MATCH_SAME
+    wanted = task.get("condition")
+    to_verify: list[dict[str, Any]] = []
+    for quote in observations:
+        if quote.get("error"):
+            continue
+        condition = quote.get("condition")
+        if condition and condition != wanted and wanted not in ("any",):
+            quote["identity_verdict"] = DIFFERENT
+        elif quote.get("source_kind") == storage.SOURCE_SERPAPI:
+            quote["identity_verdict"] = SAME
+            to_verify.append(quote)
+        else:
+            quote["identity_verdict"] = SAME
+    if not to_verify or verifier is None:
+        return
 
-    name = str(quote.get("product_name") or "")
-    name_tokens_list = discovery._tokens(name)
-    name_tokens = set(name_tokens_list)
-    product_name = identity.get("product_name") or ""
-    confirmed_title = identity.get("confirmed_title") or ""
-    known = product_name + " " + confirmed_title
-    known_tokens = set(discovery._tokens(known))
-    product_token_set = set(discovery._significant_tokens(product_name))
+    hashes = {id(q): _offer_hash(q) for q in to_verify}
+    cached = storage.get_offer_verdicts(task["id"], list(set(hashes.values())), db_path=db_path)
+    pending: dict[str, dict[str, Any]] = {}
+    for quote in to_verify:
+        verdict = cached.get(hashes[id(quote)])
+        if verdict is not None:
+            if verdict[0] != SAME:
+                quote["identity_verdict"] = verdict[0]
+        else:
+            pending.setdefault(hashes[id(quote)], quote)
+    if not pending:
+        return
 
-    # Structured identity the page itself stated for the *same selected* JSON-LD
-    # product: brand and size/variant may fill a name that omits the brand or the
-    # spec at search time (see `discovery._detail_identity`). Without this, an offer
-    # confirmed from those fields could never pass its own monitoring check. Never
-    # the search card, and never OpenGraph data.
-    brand = str(quote.get("brand") or "")
-    variant = str(quote.get("variant") or "")
-    evidence_tokens = set(name_tokens)
-    evidence_tokens.update(discovery._tokens(brand))
-    evidence_tokens.update(discovery._tokens(variant))
+    identity = task_identity(task) or {}
+    product = {
+        "title": identity.get("confirmed_title") or task.get("product_name"),
+        "constraints": {k: identity.get(k) for k in ("colour", "capacity", "brand") if identity.get(k)},
+        "condition": wanted or "new",
+    }
+    ids = {f"o{i + 1}": h for i, h in enumerate(pending)}
+    offers = [
+        {
+            "id": oid,
+            "merchant": pending[h].get("retailer"),
+            "title": pending[h].get("product_name"),
+            "condition": pending[h].get("condition") or "new/unknown",
+            "price": pending[h].get("price"),
+            "currency": pending[h].get("currency"),
+        }
+        for oid, h in ids.items()
+    ]
+    result = verifier(product, offers)
+    fresh_verdicts = {}
+    for oid, h in ids.items():
+        verdict, reason = result.value.get(oid, (UNVERIFIED, None))
+        if verdict != UNVERIFIED:
+            fresh_verdicts[h] = (verdict, reason)
+    if fresh_verdicts:
+        storage.save_offer_verdicts(task["id"], fresh_verdicts, db_path=db_path)
+    for quote in to_verify:
+        h = hashes[id(quote)]
+        if h in pending:
+            verdict = fresh_verdicts.get(h, (UNVERIFIED, None))[0]
+            if verdict != SAME:
+                quote["identity_verdict"] = verdict
 
-    # 0. A page that contradicts itself is `different` before anything else: its name
-    # states a different brand/aspect than its own structured brand/variant (the same
-    # selected JSON-LD product). Concatenating the two would hide the contradiction and
-    # let a Bose-named page with a Sony brand read as a Sony match. Complementary
-    # fields — the name omits the brand and the structured brand supplies it — are not
-    # a conflict and still confirm (see `discovery._page_self_conflicts`).
-    if discovery._page_self_conflicts(name, brand, variant, product_token_set):
-        return discovery.MATCH_DIFFERENT
 
-    # 1. Model completeness: one shared word is not a match.
-    missing_model = [t for t in product_token_set if t not in evidence_tokens]
-    if missing_model:
-        return discovery.MATCH_NEEDS_CONFIRMATION
-
-    # 2. Accessory scan on names of ALL lengths; feature phrases ("battery life") and
-    # contextual body nouns ("... for Blemish-Prone Skin") are exempt.
-    if discovery.flagged_accessory_words(name_tokens_list, known_tokens):
-        return discovery.MATCH_DIFFERENT
-
-    stated_capacity = discovery._extract_capacity(name) or discovery._extract_capacity(variant)
-    # 3. Generation: a digit directly following a model token must be one the
-    # confirmed product carries; a generation the product carries must be stated.
-    # Capacity digits of the quote itself ("Fitbit Air 64 GB") are not generations.
-    capacity = (identity.get("capacity") or "").strip().lower()
-    identity_gen = {t for t in discovery._tokens(product_name) if t.isdigit()}
-    if capacity:
-        identity_gen = {g for g in identity_gen if g not in capacity}
-    quote_capacity_digits = discovery._capacity_digit_tokens(stated_capacity)
-    for i, tok in enumerate(name_tokens_list[:-1]):
-        if tok in product_token_set and name_tokens_list[i + 1].isdigit():
-            nxt = name_tokens_list[i + 1]
-            if nxt in quote_capacity_digits:
-                continue
-            if nxt not in identity_gen:
-                return discovery.MATCH_DIFFERENT
-    unstated_gen = [g for g in identity_gen if g not in name_tokens]
-    if unstated_gen:
-        return discovery.MATCH_NEEDS_CONFIRMATION
-
-    # 4. Colour: canonical comparison, so "Obsidian" vs "black" agrees. When the
-    # request named no colour, the confirmed title's colour binds — selecting
-    # "Obsidian" makes it the confirmed spec even if the user never said "black".
-    raw_colour = identity.get("colour") or discovery._extract_colour(confirmed_title)
-    requested = discovery._canonical_colour(raw_colour)
-    if requested is not None:
-        stated = discovery._canonical_colour(name) or discovery._canonical_colour(variant)
-        if stated is None:
-            return discovery.MATCH_NEEDS_CONFIRMATION
-        if stated != requested:
-            return discovery.MATCH_DIFFERENT
-
-    # 5. Capacity/spec: same inference rule as for colour.
-    requested_capacity = capacity or discovery._extract_capacity(confirmed_title)
-    if requested_capacity:
-        if stated_capacity is None:
-            return discovery.MATCH_NEEDS_CONFIRMATION
-        if stated_capacity != requested_capacity:
-            return discovery.MATCH_DIFFERENT
-
-    return discovery.MATCH_SAME
+def default_verifier() -> Verifier | None:
+    """The offer-verifier agent when enabled and a model is configured."""
+    if not config.llm_offer_verify() or not llm.is_configured(offer_verifier.NAME):
+        return None
+    return lambda product, offers: offer_verifier.run(product, offers)
 
 
 def _send_event_notification(
@@ -336,63 +314,71 @@ def _failed_quote(source: dict[str, Any], product_name: str, error: str, at: str
     }
 
 
-def _fetcher_for_source(
-    source: dict[str, Any],
-    default_fetcher: Callable[[str], dict[str, Any]],
-) -> Callable[[str], dict[str, Any]]:
-    """Pick the fetcher for one source based on where its URL came from.
+def _fetcher_observer(fetcher: Callable[[str], dict[str, Any]]) -> Observer:
+    """Adapt a single-URL fetcher (one quote per source) to the observer contract."""
 
-    - ``web_search`` sources are product pages found on the open web: they are
-      fetched restricted to the candidate's own HTTPS host (cross-host redirects,
-      private addresses and oversized pages all fail). The monitoring loop never
-      calls any search provider — Brave runs once during discovery, never again.
-    - ``retailer_adapter`` sources (and anything without a kind, i.e. legacy rows)
-      use the injected/default fetcher unchanged.
-    """
-    if source.get("source_kind") == "web_search" and default_fetcher is _DEFAULT_QUOTE_FETCHER:
-        return scraper.fetch_quote_on_host_llm
-    return default_fetcher
+    def observe(source: dict[str, Any], _task: dict[str, Any]) -> list[dict[str, Any]]:
+        quote = fetcher(source["url"])
+        # The source row is the authoritative shop label for a single-page source.
+        quote["retailer"] = source.get("retailer") or quote.get("retailer")
+        quote.setdefault("trusted", True)
+        return [quote]
+
+    return observe
 
 
 def _observe_sources(
     fresh: dict[str, Any],
     sources: list[dict[str, Any]],
-    fetcher: Callable[[str], dict[str, Any]],
+    observer: Observer,
     db_path: Path | None,
 ) -> list[dict[str, Any]]:
-    """Fetch every enabled source, persisting each observation independently.
+    """Observe every enabled source, persisting each quote independently.
 
     One source failing never stops the others, and never counts as "the deal ended":
-    an unreachable shop is not evidence about its price.
+    an unreachable shop is not evidence about its price. A product source can return
+    one quote per seller; all of them share the check's ``check_run_id``.
     """
+    run_id = uuid.uuid4().hex[:12]
     observations: list[dict[str, Any]] = []
     for source in sources:
         started = _now()
-        source_fetcher = _fetcher_for_source(source, fetcher)
         try:
-            quote = source_fetcher(source["url"])
-        except scraper.ScraperError as exc:
-            quote = _failed_quote(
-                source, fresh["product_name"], str(exc), _iso(started)
-            )
+            quotes = list(observer(source, fresh))
+            if not quotes:
+                raise pricing.ObservationError("The source returned no observation.")
+        except pricing.ObservationError as exc:
+            quotes = [_failed_quote(source, fresh["product_name"], str(exc), _iso(started))]
         except Exception as exc:  # noqa: BLE001 - one bad source must not sink the task
-            logger.exception("Unexpected error fetching %s", source["url"])
-            quote = _failed_quote(
-                source, fresh["product_name"], f"{type(exc).__name__}: {exc}", _iso(started)
-            )
-        quote.setdefault("fetched_at", _iso(started))
-        quote.setdefault("url", source["url"])
-        # The source row is the authoritative shop label (a display name such as
-        # "JB Hi-Fi"); the scraper only knows the host. The observation must report
-        # the same shop name the user selected, so override rather than default.
-        quote["retailer"] = source.get("retailer") or quote.get("retailer")
-        quote["source_id"] = source["id"]
-        quote["quote_id"] = storage.save_quote(
-            fresh["id"], quote, db_path=db_path, source_id=source["id"]
-        )
-        storage.record_source_check(source["id"], error=quote.get("error"), db_path=db_path)
-        observations.append(quote)
+            logger.exception("Unexpected error observing source %s", source["id"])
+            quotes = [_failed_quote(source, fresh["product_name"], f"{type(exc).__name__}: {exc}", _iso(started))]
+        for quote in quotes:
+            quote.setdefault("fetched_at", _iso(started))
+            quote.setdefault("url", source["url"])
+            if not quote.get("retailer"):
+                quote["retailer"] = source.get("retailer")
+            quote["source_id"] = source["id"]
+            quote["source_kind"] = source.get("source_kind")
+            quote["check_run_id"] = run_id
+            observations.append(quote)
+        errors = [q.get("error") for q in quotes if q.get("error")]
+        storage.record_source_check(source["id"], error=errors[0] if errors else None, db_path=db_path)
     return observations
+
+
+def _save_observations(task_id: int, observations: list[dict[str, Any]], db_path: Path | None) -> None:
+    for quote in observations:
+        quote["quote_id"] = storage.save_quote(task_id, quote, db_path=db_path, source_id=quote.get("source_id"))
+
+
+def _alert_candidates(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Observations allowed to trigger an alert: same item, and trusted when required."""
+    trusted_only = config.alert_trusted_only()
+    return [
+        q for q in observations
+        if q.get("identity_verdict") in (SAME, UNVERIFIED)
+        and (not trusted_only or q.get("trusted") is not False)
+    ]
 
 
 def _best_buyable_quote(
@@ -414,6 +400,26 @@ def _best_buyable_quote(
         return (Decimal(str(q["price"])), int(q.get("source_id") or 0))
 
     return sorted(usable, key=sort_key)[0]
+
+
+def _reset_blocker(
+    task: dict[str, Any], sources: list[dict[str, Any]], observations: list[dict[str, Any]]
+) -> str | None:
+    """Why the current deal episode must not be reset, or None when it may be."""
+    if any(q.get("error") for q in observations):
+        return "not_all_sources_comparable"
+    relevant = _alert_candidates(observations) + [
+        q for q in observations if q.get("identity_verdict") == NEEDS_CONFIRMATION
+        and (not config.alert_trusted_only() or q.get("trusted") is not False)
+    ]
+    if any(q.get("identity_verdict") != SAME for q in relevant):
+        return "identity_unconfirmed"
+    for source in sources:
+        if not any(q.get("source_id") == source["id"] and _is_comparable_quote(task, q) for q in relevant):
+            if any(q.get("source_id") == source["id"] and q.get("identity_verdict") == DIFFERENT for q in observations):
+                return "identity_mismatch"
+            return "not_all_sources_comparable"
+    return None
 
 
 def _other_source_report(
@@ -447,10 +453,15 @@ def _other_source_report(
     return report
 
 
+_DEFAULT = object()
+
+
 def check_task(
     task: dict[str, Any],
     *,
-    fetcher: Callable[[str], dict[str, Any]] = scraper.fetch_quote,
+    observer: Observer | None = None,
+    fetcher: Callable[[str], dict[str, Any]] | None = None,
+    verifier: Verifier | None | object = _DEFAULT,
     send_fn: Callable[[str, dict, dict], dict[str, Any]] = notifier.notify_deal,
     max_retries: int | None = None,
     db_path: Path | None = None,
@@ -458,9 +469,14 @@ def check_task(
 ) -> dict[str, Any]:
     """Run one check for a task and update persistence.
 
-    Stage C: a task may watch several confirmed sources. Every enabled source is
-    fetched and recorded; the deal decision is made once per task from the best
-    buyable observation, so two shops both matching never produce two emails.
+    Every enabled source is observed and recorded (a Google Shopping product source
+    yields one quote per seller); the deal decision is made once per task from the
+    best buyable, same-item, trusted observation, so several matching sellers never
+    produce several emails.
+
+    ``observer`` defaults to :func:`pricing.default_observer`; ``fetcher`` adapts a
+    single-URL fetcher instead. ``verifier`` defaults to the offer-verifier agent
+    when enabled; pass ``None`` to skip it.
 
     Concurrency boundaries:
 
@@ -501,25 +517,27 @@ def check_task(
                 "sources_checked": 0,
             }
 
-        observations = _observe_sources(fresh, sources, fetcher, db_path)
+        if observer is None:
+            observer = _fetcher_observer(fetcher) if fetcher is not None else pricing.default_observer(db_path)
+        observations = _observe_sources(fresh, sources, observer, db_path)
 
         # Re-read the task after fetching: a threshold/comparison change that
         # committed while the fetches were in flight must govern this decision,
         # never the stale snapshot taken before it.
         fresh = storage.get_task(task_id, db_path=db_path) or fresh
 
-        # Identity gate: each observation is classified against the confirmed
-        # product identity. A detail page that now serves an accessory or a
-        # different colour/capacity must not drive the deal decision in either
-        # direction. Legacy tasks without identity pass unchanged.
-        identity = task_identity(fresh)
-        for q in observations:
-            q["identity_verdict"] = quote_identity_verdict(identity, q)
-
-        best = _best_buyable_quote(
+        # Identity gate: second-hand offers the task did not ask for are rejected in
+        # code; the offer-verifier agent may veto the rest. Neither a rejected nor
+        # an uncertain offer can end a deal episode.
+        assign_identity_verdicts(
             fresh,
-            [q for q in observations if q.get("identity_verdict") == discovery.MATCH_SAME],
+            observations,
+            verifier=default_verifier() if verifier is _DEFAULT else verifier,
+            db_path=db_path,
         )
+        _save_observations(task_id, observations, db_path)
+
+        best = _best_buyable_quote(fresh, _alert_candidates(observations))
         duration_ms = int((_now() - start).total_seconds() * 1000)
 
         active_event = storage.get_active_event(task_id, db_path=db_path)
@@ -540,6 +558,7 @@ def check_task(
                     "in_stock": q.get("in_stock"),
                     "error": q.get("error"),
                     "identity_verdict": q.get("identity_verdict"),
+                    "trusted": q.get("trusted"),
                 }
                 for q in observations
             ],
@@ -588,32 +607,26 @@ def check_task(
                     finally:
                         storage.end_send(task_id, send_owner, db_path=db_path)
         else:
-            # End the episode only when *every* enabled source produced a comparable
-            # observation, confirmed as the same product, and none of them is a
-            # deal. A single failure, an unknown stock level, or a page that now
-            # serves a different product/accessory is not evidence that the deal
-            # ended.
+            # End the episode only on positive evidence: every enabled source was
+            # observed without error and produced at least one comparable, same-item
+            # quote, no alert-relevant quote is uncertain, and none is a deal. A
+            # failure, an unknown stock level or an unverified offer is not evidence
+            # that the deal ended.
             if active_event is not None:
-                all_comparable = len(observations) == len(sources) and all(
-                    _is_comparable_quote(fresh, q)
-                    and q.get("identity_verdict") == discovery.MATCH_SAME
-                    for q in observations
-                )
-                if all_comparable:
+                reason = _reset_blocker(fresh, sources, observations)
+                if reason is None:
                     reset_count = storage.reset_active_events(task_id, db_path=db_path)
                     result["event_reset"] = True
                     result["events_reset"] = reset_count
                 else:
                     result["event_reset_skipped"] = True
-                    result["event_reset_reason"] = (
-                        "identity_mismatch"
-                        if all(
-                            _is_comparable_quote(fresh, q) for q in observations
-                        )
-                        else "not_all_sources_comparable"
-                    )
+                    result["event_reset_reason"] = reason
 
-        next_check = _iso(_now() + timedelta(minutes=fresh["frequency_minutes"]))
+        minutes = int(fresh["frequency_minutes"])
+        if any(s.get("source_kind") == storage.SOURCE_SERPAPI for s in sources):
+            # Each product check spends a SerpApi call: enforce the quota-protecting floor.
+            minutes = max(minutes, config.monitor_min_frequency_minutes())
+        next_check = _iso(_now() + timedelta(minutes=minutes))
         storage.update_last_check(task_id, best.get("quote_id") if best else None, db_path=db_path)
         storage.update_next_check(task_id, next_check, db_path=db_path)
         logger.info(
@@ -713,8 +726,8 @@ class TaskScheduler:
 
     def _perform_check(self, fresh: dict[str, Any]) -> dict[str, Any]:
         """The actual check invocation. Subclasses may override this to inject a
-        different fetcher/sender (e.g. the demo web UI); the claim, reservation,
-        stop-flag and scheduling machinery above stay shared and unchanged."""
+        different observer/sender (e.g. tests); the claim, reservation, stop-flag
+        and scheduling machinery above stay shared and unchanged."""
         return check_task(fresh, db_path=self.db_path, should_abort=self._stop_event.is_set)
 
     def _run_check(self, task_id: int) -> None:

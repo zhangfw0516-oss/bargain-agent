@@ -6,7 +6,8 @@
       {"name": "Noel Leeming", "title": "Fitbit Charge 6 Obsidian", "link": "https://www.noelleeming.co.nz/p/fitbit-charge-6", "price": "$229.00", "extracted_price": 229.0, "details_and_offers": ["In stock online"]},
       {"name": "JB Hi-Fi", "link": "https://www.jbhifi.co.nz/products/fitbit-charge-6", "price": "$219.00", "extracted_price": 219.0},
       {"name": "Cheap Gadgets NZ", "link": "https://cheapgadgets.example.nz/fitbit", "price": "$179.00", "extracted_price": 179.0, "details_and_offers": ["Refurbished"]},
-      {"name": "Overseas Store", "link": "https://overseas.example.com/fitbit", "price": "US$150.00", "extracted_price": 150.0}
+      {"name": "Overseas Store", "link": "https://overseas.example.com/fitbit", "price": "US$150.00", "extracted_price": 150.0},
+      {"name": "PB Tech", "link": "https://www.pbtech.co.nz/product/fitbit-charge-6", "price": "$209.00", "extracted_price": 209.0, "details_and_offers": ["Out of stock"]}
     ]
   }
 }

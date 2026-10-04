@@ -101,8 +101,9 @@ class TestSerpApiOffers(unittest.TestCase):
     def test_immersive_offers(self):
         client, sender = serp(load_fixture("serpapi", "immersive_fitbit.json"))
         offers, ref = client.offers(ProductRef("111", "tok-111", "fitbit charge 6"))
-        self.assertEqual([o.merchant for o in offers], ["Noel Leeming", "JB Hi-Fi", "Cheap Gadgets NZ", "Overseas Store"])
+        self.assertEqual([o.merchant for o in offers], ["Noel Leeming", "JB Hi-Fi", "Cheap Gadgets NZ", "Overseas Store", "PB Tech"])
         self.assertEqual(offers[1].price, "219.00")
+        self.assertEqual([o.in_stock for o in offers], [True, True, True, True, False])
         self.assertEqual(offers[2].condition, "refurbished")
         self.assertEqual(offers[3].currency, "USD")
         self.assertEqual(sender.calls[0]["params"]["engine"], "google_immersive_product")
@@ -125,7 +126,7 @@ class TestSerpApiOffers(unittest.TestCase):
             load_fixture("serpapi", "immersive_fitbit.json"),
         )
         offers, ref = client.offers(ProductRef("111", "tok-old", "fitbit charge 6"))
-        self.assertEqual(len(offers), 4)
+        self.assertEqual(len(offers), 5)
         self.assertEqual(ref.page_token, "tok-new")
         self.assertEqual(len(sender.calls), 4)
 
