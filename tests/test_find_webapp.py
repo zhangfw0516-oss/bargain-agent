@@ -33,7 +33,7 @@ import iterative_discovery
 import storage
 
 import tests.test_webapp as webapp_tests
-import tools_live_offline_server as live_fakes
+from tests import fake_server as live_fakes
 from tests.test_webapp import ServerHarness, WebAppTestCase
 
 

@@ -41,7 +41,7 @@ import scheduler
 import storage
 import webapp
 
-import tools_live_offline_server as live_fakes
+from tests import fake_server as live_fakes
 
 REAL_DB_STEM = "bargain_agent"  # the user's real database file stem
 
