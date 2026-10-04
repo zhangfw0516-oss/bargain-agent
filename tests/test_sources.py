@@ -110,25 +110,73 @@ class TestSerpApiOffers(unittest.TestCase):
         self.assertNotIn("location", sender.calls[0]["params"])
         self.assertEqual(ref.page_token, "tok-111")
 
-    def test_falls_back_to_product_id(self):
-        client, sender = serp(load_fixture("serpapi", "product_fitbit.json"))
-        offers, _ = client.offers(ProductRef(product_id="111"))
-        self.assertEqual([(o.merchant, o.price) for o in offers], [("PB Tech", "239.00"), ("Harvey Norman", "235.00")])
-        self.assertEqual(sender.calls[0]["params"]["engine"], "google_product")
-
     def test_stale_token_is_refreshed_by_research(self):
         shopping = load_fixture("serpapi", "shopping_fitbit.json")
         shopping["shopping_results"][0]["immersive_product_page_token"] = "tok-new"
         client, sender = serp(
-            load_fixture("serpapi", "no_results.json"),  # stale token
-            load_fixture("serpapi", "no_results.json"),  # google_product empty
+            (400, {"error": "Invalid page token"}),  # stale token
             shopping,
             load_fixture("serpapi", "immersive_fitbit.json"),
         )
         offers, ref = client.offers(ProductRef("111", "tok-old", "fitbit charge 6"))
         self.assertEqual(len(offers), 5)
         self.assertEqual(ref.page_token, "tok-new")
-        self.assertEqual(len(sender.calls), 4)
+        self.assertEqual([c["params"]["engine"] for c in sender.calls],
+                         ["google_immersive_product", "google_shopping", "google_immersive_product"])
+
+    def test_listing_is_the_offer_when_no_store_list_exists(self):
+        shopping = load_fixture("serpapi", "shopping_fitbit.json")
+        client, sender = serp((400, {"error": "Invalid page token"}), shopping, {"product_results": {"stores": []}})
+        offers, ref = client.offers(ProductRef("222", "tok-old", "fitbit charge 6"))
+        self.assertEqual([(o.merchant, o.price) for o in offers], [("PB Tech", "239.00")])
+        self.assertEqual(ref.page_token, "tok-222")
+
+    def test_quota_errors_are_not_swallowed(self):
+        client, _ = serp(load_fixture("serpapi", "out_of_searches.json"))
+        with self.assertRaises(base.QuotaExceeded):
+            client.offers(ProductRef("1", "tok", "q"))
+
+
+class TestSerpApiRecorded(unittest.TestCase):
+    """Real response shapes recorded on 2026-10-04 (trimmed)."""
+
+    def test_recorded_shopping_results(self):
+        client, _ = serp(load_fixture("serpapi", "shopping_nz_recorded.json"))
+        results = client.search("fitbit charge 6", limit=40)
+        by_merchant = {r.merchant: r for r in results}
+        harvey = by_merchant["Harvey Norman New Zealand"]
+        self.assertEqual((harvey.price, harvey.currency, harvey.condition), ("220.00", "NZD", None))
+        self.assertTrue(harvey.product_id and harvey.page_token)
+        self.assertEqual(sum(r.condition == "refurbished" for r in results), 3)
+        converted = by_merchant["StrapsCo"]
+        self.assertIn("converted from US$", converted.snippet)
+        self.assertEqual(converted.currency, "NZD")
+
+    def test_recorded_immersive_store(self):
+        client, _ = serp(load_fixture("serpapi", "immersive_nz_recorded.json"))
+        offers, _ = client.offers(ProductRef("18339555341368487758", "tok", "fitbit charge 6"))
+        self.assertEqual(len(offers), 1)
+        offer = offers[0]
+        self.assertEqual((offer.merchant, offer.price, offer.shipping, offer.in_stock),
+                         ("Harvey Norman New Zealand", "220.00", "6.95", True))
+
+    def test_recorded_merchant_names_match_the_trusted_list(self):
+        import pricing
+
+        for name in ("Harvey Norman New Zealand", "MightyApe.co.nz", "PB Tech"):
+            self.assertTrue(pricing.merchant_trust(name), name)
+        for name in ("Desertcart.ae", "StrapsCo", "Parallel Imported"):
+            self.assertFalse(pricing.merchant_trust(name), name)
+
+
+class TestFocusText(unittest.TestCase):
+    def test_keeps_prices_deep_in_long_pages(self):
+        page = "Fitbit Charge 6\n" + ("menu item\n" * 5000) + "Special price $198.00 inc GST\n" + ("footer\n" * 3000)
+        focused = base.focus_text(page, 3000)
+        self.assertLessEqual(len(focused), 3100)
+        self.assertIn("Fitbit Charge 6", focused)
+        self.assertIn("$198.00 inc GST", focused)
+        self.assertEqual(base.focus_text("short", 3000), "short")
 
     def test_nothing_found(self):
         client, _ = serp(load_fixture("serpapi", "no_results.json"))
@@ -167,6 +215,22 @@ class TestFirecrawl(unittest.TestCase):
         quote = Firecrawl("fc", sender=sender, timeout=5).extract("https://shop.example.nz/kindle")
         self.assertEqual((quote["price"], quote["currency"], quote["in_stock"]), ("279.00", "NZD", True))
         self.assertEqual(sender.calls[0]["json"]["formats"], ["json"])
+
+    def test_recorded_search_keeps_the_price_in_page_text(self):
+        sender = FakeSender(load_fixture("firecrawl", "search_recorded.json"))
+        results = Firecrawl("fc", sender=sender, timeout=5).search("fitbit charge 6")
+        self.assertEqual(len(results), 3)
+        self.assertIn("pbtech.co.nz", results[0].link)
+        self.assertIn("$198.00", results[0].page_text)
+        self.assertEqual(sender.calls[0]["json"]["country"], "nz")
+
+    def test_prompt_asks_for_the_tax_inclusive_price(self):
+        from sources import firecrawl
+
+        sender = FakeSender(load_fixture("firecrawl", "scrape_ok.json"))
+        Firecrawl("fc", sender=sender, timeout=5).extract("https://www.pbtech.co.nz/product/x")
+        self.assertIn("inc GST", sender.calls[0]["json"]["jsonOptions"]["prompt"])
+        self.assertIn("tax-inclusive", firecrawl.PRICE_PROMPT)
 
     def test_extract_without_price_fails_closed(self):
         sender = FakeSender(load_fixture("firecrawl", "scrape_noprice.json"))

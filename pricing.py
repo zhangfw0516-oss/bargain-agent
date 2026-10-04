@@ -141,8 +141,12 @@ def default_observer(db_path: Path | None = None) -> Callable[[dict[str, Any], d
     return lambda source, task: observe_source(source, task, providers=providers, db_path=db_path)
 
 
+_NAME_SUFFIXES = re.compile(r"(\.co\.nz|\.com|\.nz|\bnew zealand\b|\bnz\b|\blimited\b|\bltd\b|\bonline\b|\bstore\b)", re.I)
+
+
 def _norm_name(text: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", text.casefold())
+    """'Harvey Norman New Zealand', 'MightyApe.co.nz', 'PB Tech' -> 'harveynorman', 'mightyape', 'pbtech'."""
+    return re.sub(r"[^a-z0-9]", "", _NAME_SUFFIXES.sub(" ", text.casefold()))
 
 
 def host_of(url: str | None) -> str:

@@ -46,6 +46,11 @@ OFFER_PRICE_CASES = [
     {"id": "o20", "merchant": "Noel Leeming", "raw": "", "extracted": None, "gold": (None, None), "provenance": PROVENANCE_SYNTHETIC},
     {"id": "o21", "merchant": "Gadget Hub", "raw": "$1.299,00", "extracted": 1299.0, "gold": ("1299.00", "NZD"), "provenance": PROVENANCE_SYNTHETIC},
     {"id": "o22", "merchant": "Harvey Norman", "raw": "$4,999.00", "extracted": 4999.0, "gold": ("4999.00", "NZD"), "provenance": PROVENANCE_OBSERVED},
+    # Recorded from SerpApi google_shopping (gl=nz) on 2026-10-04.
+    {"id": "o23", "merchant": "Harvey Norman New Zealand", "raw": "$220.00", "extracted": 220.0, "gold": ("220.00", "NZD"), "provenance": PROVENANCE_OBSERVED},
+    {"id": "o24", "merchant": "MightyApe.co.nz", "raw": "$231.84", "extracted": 231.84, "gold": ("231.84", "NZD"), "provenance": PROVENANCE_OBSERVED},
+    {"id": "o25", "merchant": "StrapsCo", "raw": "$56.96", "extracted": 56.96, "gold": ("56.96", "NZD"), "provenance": PROVENANCE_OBSERVED},
+    {"id": "o26", "merchant": "PB Tech", "raw": "$539.00", "extracted": 539.0, "gold": ("539.00", "NZD"), "provenance": PROVENANCE_OBSERVED},
 ]
 
 # --------------------------------------------------------------------------- 1b pages
@@ -89,6 +94,11 @@ PAGE_PRICE_CASES = [
     {"id": "p11", "page_text": "Air Fryer 5.5L\nSpecial NZ$129.00 (save $70)\nOnly 2 left",
      "gold": {"price": "129.00", "currency": "NZD", "in_stock": True},
      "replay": _ext("Air Fryer 5.5L", "129.00", "NZD", True), "provenance": PROVENANCE_OBSERVED},
+    {"id": "p13", "page_text": "Fitbit Charge 6 Fitness Tracker - Silver / White\nSpecial price\n$172.17\n+GST\n$198.00\ninc GST\nAdd to cart",
+     "gold": {"price": "198.00", "currency": "NZD", "in_stock": True},
+     # Recorded 2026-10-04: Firecrawl's extractor returned the ex-GST 172.17 for this
+     # PB Tech page before the prompt asked for the tax-inclusive price.
+     "replay": _ext("Fitbit Charge 6 Fitness Tracker - Silver / White", "198.00", "NZD", True), "provenance": PROVENANCE_OBSERVED},
     {"id": "p12", "page_text": "Smart Watch S9\nPrice on application",
      "gold": None,
      "replay": _ext("Smart Watch S9", "0.00", "NZD", None), "provenance": PROVENANCE_SYNTHETIC},

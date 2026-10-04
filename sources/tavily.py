@@ -14,7 +14,7 @@ from sources.base import NotConfigured, PageText, Sender, Unavailable, clean_tex
 
 ENDPOINT = "https://api.tavily.com/extract"
 NAME = "tavily"
-MAX_PAGE_CHARS = 12_000
+MAX_PAGE_CHARS = 60_000
 
 
 class TavilyExtract:

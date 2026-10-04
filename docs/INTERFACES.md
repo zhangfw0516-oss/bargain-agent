@@ -38,7 +38,7 @@ A recommendation: `id, title, link, merchant, price, currency, price_source (ser
 | Protocol | Method | Implementations |
 | --- | --- | --- |
 | `ShoppingSearch` | `search(query, *, limit) -> [ShoppingResult]` | `SerpApi` (google_shopping), `Firecrawl` (supplement; carries `page_text`, no price) |
-| `OfferSource` | `offers(ProductRef) -> ([Offer], ProductRef)` | `SerpApi` (google_immersive_product by page token, else google_product by id, else re-search by id) |
+| `OfferSource` | `offers(ProductRef) -> ([Offer], ProductRef)` | `SerpApi` (google_immersive_product by page token; on failure re-search by product id; the listing itself when Google shows no store list — `google_product` was retired by Google) |
 | `PageExtractor` | `extract(url) -> PageText or validated price dict` | `TavilyExtract`, `Firecrawl` (JSON-schema scrape) |
 
 Errors: `NotConfigured`, `AuthError`, `RateLimited`, `QuotaExceeded`, `ProviderTimeout`, `Unavailable` (all `ProviderError`). `request_json` maps HTTP status and rebuilds transport errors without URLs. `registry.build_providers(before_call)` assembles configured providers; `before_call(name)` runs before each billable call.

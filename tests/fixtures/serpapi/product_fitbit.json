@@ -1,8 +1,0 @@
-{
-  "_note": "Shape synthesized from SerpApi google_product docs (online sellers).",
-  "product_results": {"title": "Fitbit Charge 6"},
-  "sellers_results": {"online_sellers": [
-    {"name": "PB Tech", "link": "https://www.pbtech.co.nz/product/fitbit-charge-6", "base_price": "$239.00", "total_price": "$249.00"},
-    {"name": "Harvey Norman", "link": "https://www.harveynorman.co.nz/fitbit-charge-6", "base_price": "$235.00"}
-  ]}
-}

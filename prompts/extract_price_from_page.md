@@ -29,6 +29,10 @@ Rules:
   explicitly present in the page text.
 - If several prices appear (a discount plus a "from $X" range) and the page clearly
   labels one as the current price, use that one; otherwise use null.
+- Use the price a consumer pays. When the page shows a price excluding tax
+  ("+GST", "ex GST", "excl. GST") and one including tax ("inc GST"), use the
+  tax-inclusive price.
+- Pages may be excerpts joined by "…"; treat them as one page.
 - price and currency must agree: a price without a stated currency is not usable.
 
 Example page text (abridged):

@@ -1,9 +1,11 @@
 """SerpApi Google Shopping provider: product search and per-product seller offers.
 
-Search uses ``engine=google_shopping``. Offers for one product use
-``engine=google_immersive_product`` when a page token is known, otherwise the
-classic ``engine=google_product`` with the product id. A stale page token is
-refreshed by re-running the original search and matching the product id.
+Search uses ``engine=google_shopping``; each result is one seller's listing with a
+``product_id`` and an ``immersive_product_page_token``. Offers for one product use
+``engine=google_immersive_product`` with that token (Google retired the classic
+``google_product`` engine). When the token no longer works, the original query is
+searched again and the product is matched by id; if Google then shows no store list,
+the listing itself is the single offer.
 
 SerpApi takes its key as the ``api_key`` query parameter, so errors are rebuilt
 without the URL (see :func:`sources.base.request_json`) and the key is never logged.
@@ -19,6 +21,7 @@ from sources.base import (
     NotConfigured,
     Offer,
     ProductRef,
+    ProviderError,
     QuotaExceeded,
     Sender,
     ShoppingResult,
@@ -38,6 +41,7 @@ MAX_RESULTS = 40
 
 #: SerpApi reports "no results" as HTTP 200 with an ``error`` field.
 _NO_RESULTS_MARKERS = ("hasn't returned any results", "has not returned any results", "no results")
+_OUT_OF_STOCK = ("out of stock", "sold out", "currently unavailable", "unavailable online")
 
 
 class SerpApi:
@@ -72,9 +76,13 @@ class SerpApi:
         data = self._get({"engine": "google_shopping", "q": text})
         if data is None:
             return []
+        items = list(data.get("shopping_results") or []) + list(data.get("inline_shopping_results") or [])
+        for group in data.get("categorized_shopping_results") or []:
+            if isinstance(group, dict):
+                items.extend(group.get("shopping_results") or [])
         results: list[ShoppingResult] = []
         seen: set[str] = set()
-        for item in list(data.get("shopping_results") or []) + list(data.get("inline_shopping_results") or []):
+        for item in items:
             result = _shopping_result(item, self._locale)
             if result is None:
                 continue
@@ -89,32 +97,39 @@ class SerpApi:
         return results
 
     def offers(self, ref: ProductRef) -> tuple[list[Offer], ProductRef]:
-        """All sellers' current offers for one product, plus a refreshed ref."""
+        """Every seller's current offer for one product, plus a refreshed ref."""
         if ref.page_token:
-            data = self._get({"engine": "google_immersive_product", "page_token": ref.page_token})
-            if data is not None:
-                offers = _immersive_offers(data, self._locale)
+            offers = self._immersive(ref.page_token)
+            if offers:
+                return offers, ref
+        if not (ref.product_id and ref.search_query):
+            return [], ref
+        # The token expired or listed no stores: find the product again by id.
+        for result in self.search(ref.search_query, limit=MAX_RESULTS):
+            if result.product_id != ref.product_id:
+                continue
+            fresh = ProductRef(ref.product_id, result.page_token or ref.page_token, ref.search_query, ref.title)
+            if result.page_token and result.page_token != ref.page_token:
+                offers = self._immersive(result.page_token)
                 if offers:
-                    return offers, ref
-        if ref.product_id:
-            data = self._get({"engine": "google_product", "product_id": ref.product_id, "offers": "1"})
-            if data is not None:
-                offers = _product_offers(data, self._locale)
-                if offers:
-                    return offers, ref
-        if ref.product_id and ref.search_query:
-            # The page token expired or the product page was empty: find the product
-            # again by id and retry once with its fresh token.
-            for result in self.search(ref.search_query, limit=MAX_RESULTS):
-                if result.product_id == ref.product_id and result.page_token and result.page_token != ref.page_token:
-                    fresh = ProductRef(ref.product_id, result.page_token, ref.search_query, ref.title)
-                    data = self._get({"engine": "google_immersive_product", "page_token": fresh.page_token})
-                    if data is not None:
-                        return _immersive_offers(data, self._locale), fresh
-                    break
+                    return offers, fresh
+            listing = _offer_from_listing(result)
+            return ([listing] if listing else []), fresh
         return [], ref
 
     # -- transport --------------------------------------------------------
+
+    def _immersive(self, page_token: str) -> list[Offer]:
+        try:
+            data = self._get({"engine": "google_immersive_product", "page_token": page_token})
+        except QuotaExceeded:
+            raise
+        except ProviderError as exc:
+            if isinstance(exc, NotConfigured):
+                raise
+            logger.info("Immersive product lookup failed: %s", exc)
+            return []
+        return _immersive_offers(data, self._locale) if data else []
 
     def _get(self, params: dict[str, Any]) -> dict[str, Any] | None:
         if not self._api_key:
@@ -130,9 +145,10 @@ class SerpApi:
             raise Unavailable("SerpApi returned an unexpected response shape.")
         error = data.get("error")
         if error:
-            if any(marker in str(error).lower() for marker in _NO_RESULTS_MARKERS):
+            lowered = str(error).lower()
+            if any(marker in lowered for marker in _NO_RESULTS_MARKERS):
                 return None
-            if "run out of searches" in str(error).lower():
+            if "run out of searches" in lowered:
                 raise QuotaExceeded("SerpApi plan has run out of searches.")
             raise Unavailable(f"SerpApi error: {clean_text(error, 160)}")
         return data
@@ -140,6 +156,13 @@ class SerpApi:
 
 def _dollar_default(locale: dict[str, str]) -> str | None:
     return {"nz": "NZD", "au": "AUD", "us": "USD"}.get((locale.get("gl") or "").lower())
+
+
+def _conversion_note(item: dict[str, Any]) -> str | None:
+    alt = item.get("alternative_price")
+    if isinstance(alt, dict) and alt.get("price"):
+        return f"converted from {clean_text(alt.get('price'), 30)}"
+    return None
 
 
 def _shopping_result(item: Any, locale: dict[str, str]) -> ShoppingResult | None:
@@ -150,7 +173,9 @@ def _shopping_result(item: Any, locale: dict[str, str]) -> ShoppingResult | None
     if not title or not is_http_url(link):
         return None
     price, currency = parse_price(item.get("price"), item.get("extracted_price"), default_dollar=_dollar_default(locale))
-    condition = clean_text(item.get("second_hand_condition"), 40)
+    second_hand = clean_text(item.get("second_hand_condition"), 40)
+    notes = [n for n in (_conversion_note(item), clean_text(item.get("delivery"), 80), clean_text(item.get("tag"), 30)) if n]
+    token = item.get("immersive_product_page_token")
     return ShoppingResult(
         title=title,
         link=str(link),
@@ -159,22 +184,25 @@ def _shopping_result(item: Any, locale: dict[str, str]) -> ShoppingResult | None
         price=price,
         currency=currency,
         product_id=clean_text(item.get("product_id"), 80),
-        page_token=item.get("immersive_product_page_token") if isinstance(item.get("immersive_product_page_token"), str) else None,
+        page_token=token if isinstance(token, str) else None,
         thumbnail=item.get("thumbnail") if is_http_url(item.get("thumbnail")) else None,
-        condition=detect_condition(condition, title) or ("used" if condition else None),
-        snippet=clean_text(item.get("delivery") or item.get("snippet"), 200),
+        condition=detect_condition(second_hand, title) or ("used" if second_hand else None),
+        snippet="; ".join(notes) or None,
     )
 
 
-_OUT_OF_STOCK = ("out of stock", "sold out", "unavailable", "currently unavailable")
-
-
-def _offer(merchant: Any, title: Any, raw_price: Any, extracted: Any, link: Any, condition_text: Any, locale) -> Offer | None:
+def _offer(merchant: Any, title: Any, raw_price: Any, extracted: Any, link: Any, details: Any, locale,
+           shipping: Any = None) -> Offer | None:
     name = clean_text(merchant, 80)
     if not name:
         return None
     price, currency = parse_price(raw_price, extracted, default_dollar=_dollar_default(locale))
-    details = str(condition_text or "").lower()
+    detail_text = str(details or "").lower()
+    ship = None
+    if isinstance(shipping, (int, float)) and not isinstance(shipping, bool):
+        ship = f"{float(shipping):.2f}"
+    elif "free delivery" in detail_text or "free shipping" in detail_text:
+        ship = "0.00"
     return Offer(
         merchant=name,
         price=price,
@@ -182,10 +210,11 @@ def _offer(merchant: Any, title: Any, raw_price: Any, extracted: Any, link: Any,
         link=str(link) if is_http_url(link) else None,
         provider=NAME,
         title=clean_text(title),
-        condition=detect_condition(condition_text, title),
+        condition=detect_condition(details, title),
         # Google Shopping lists offers a merchant currently sells; an explicit
         # out-of-stock note is the only availability signal it carries.
-        in_stock=not any(marker in details for marker in _OUT_OF_STOCK),
+        in_stock=not any(marker in detail_text for marker in _OUT_OF_STOCK),
+        shipping=ship,
     )
 
 
@@ -201,24 +230,18 @@ def _immersive_offers(data: dict[str, Any], locale) -> list[Offer]:
         offer = _offer(
             store.get("name"), store.get("title") or title, store.get("price"), store.get("extracted_price"),
             store.get("link"), " ".join(filter(None, [details, str(store.get("tag") or "")])), locale,
+            shipping=store.get("shipping_extracted"),
         )
         if offer:
             offers.append(offer)
     return offers
 
 
-def _product_offers(data: dict[str, Any], locale) -> list[Offer]:
-    title = (data.get("product_results") or {}).get("title") if isinstance(data.get("product_results"), dict) else None
-    sellers = (data.get("sellers_results") or {}).get("online_sellers") if isinstance(data.get("sellers_results"), dict) else None
-    offers = []
-    for seller in sellers or []:
-        if not isinstance(seller, dict):
-            continue
-        raw = seller.get("base_price") or seller.get("total_price") or seller.get("price")
-        offer = _offer(
-            seller.get("name"), seller.get("title") or title, raw, seller.get("extracted_price"),
-            seller.get("link") or seller.get("direct_link"), seller.get("details_and_offers") or seller.get("condition"), locale,
-        )
-        if offer:
-            offers.append(offer)
-    return offers
+def _offer_from_listing(result: ShoppingResult) -> Offer | None:
+    """The search listing itself as an offer when Google shows no store list."""
+    if not result.merchant or not result.price:
+        return None
+    return Offer(
+        merchant=result.merchant, price=result.price, currency=result.currency, link=result.link, provider=NAME,
+        title=result.title, condition=result.condition, in_stock=True,
+    )

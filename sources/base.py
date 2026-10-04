@@ -90,6 +90,8 @@ class Offer:
     title: str | None = None
     condition: str | None = None
     in_stock: bool | None = None
+    #: Shipping cost in the offer's currency when the provider states it.
+    shipping: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -253,6 +255,38 @@ def detect_condition(*texts: Any) -> str | None:
             word = match.group(1).lower()
             return "refurbished" if word.startswith(("refurb", "renewed")) else "used"
     return None
+
+
+_PRICE_HINT = re.compile(r"(NZ\$|US\$|A\$|NZD|AUD|USD|\$)\s?\d[\d,]*(\.\d{1,2})?", re.I)
+
+
+def focus_text(text: str, limit: int, *, head: int = 1500, window: int = 700) -> str:
+    """Fit a long page into ``limit`` characters without losing its prices.
+
+    Product pages often put navigation before the price (a PB Tech page's first
+    price sits ~40k characters in), so a plain cut would drop it. Keep the head
+    (title) and windows around price-like text, in page order.
+    """
+    if len(text) <= limit:
+        return text
+    spans = [(0, min(head, len(text)))]
+    for match in _PRICE_HINT.finditer(text, head):
+        spans.append((max(0, match.start() - window), min(len(text), match.end() + window)))
+    merged: list[list[int]] = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    parts, used = [], 0
+    for start, end in merged:
+        room = limit - used
+        if room <= 20:
+            break
+        chunk = text[start:min(end, start + room)]
+        parts.append(chunk)
+        used += len(chunk) + 5
+    return "\n…\n".join(parts)
 
 
 def clean_text(value: Any, limit: int = 300) -> str | None:

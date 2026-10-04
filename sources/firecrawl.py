@@ -27,7 +27,7 @@ from sources.base import (
 
 BASE_URL = "https://api.firecrawl.dev/v1"
 NAME = "firecrawl"
-MAX_PAGE_CHARS = 12_000
+MAX_PAGE_CHARS = 60_000
 
 PRICE_SCHEMA = {
     "type": "object",
@@ -43,8 +43,10 @@ PRICE_SCHEMA = {
     "required": ["product_name", "price", "currency", "in_stock"],
 }
 PRICE_PROMPT = (
-    "Extract the single product sold on this page and its current selling price. "
-    "Use null for anything the page does not state. Never guess a price."
+    "Extract the single product sold on this page and the price a consumer pays now. "
+    "When the page shows both a price excluding tax (+GST, ex GST) and one including tax "
+    "(inc GST), use the tax-inclusive price. Use null for anything the page does not "
+    "state. Never guess a price."
 )
 
 

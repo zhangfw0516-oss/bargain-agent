@@ -11,6 +11,7 @@ from typing import Any
 import llm
 from agents import LLMOptions
 from schemas import validate_price_extraction
+from sources.base import focus_text
 
 NAME = "price_extractor"
 PROMPT = "extract_price_from_page.md"
@@ -35,7 +36,7 @@ def run(page_text: str, *, opts: LLMOptions | None = None) -> dict:
         raise PriceExtractionError("Page text is empty.")
     try:
         result = llm.call_json(
-            PROMPT, text[:MAX_PAGE_CHARS], validate=_validate, agent=NAME, client=opts.client, model=opts.model
+            PROMPT, focus_text(text, MAX_PAGE_CHARS), validate=_validate, agent=NAME, client=opts.client, model=opts.model
         )
     except llm.LLMError as exc:
         raise PriceExtractionError(str(exc)) from None

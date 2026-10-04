@@ -1,0 +1,130 @@
+{
+ "_note": "Recorded from SerpApi google_shopping (q='fitbit charge 6', gl=nz) on 2026-10-04; trimmed, page tokens shortened, no key.",
+ "shopping_results": [
+  {
+   "position": 1,
+   "title": "Fitbit Charge 6 Fitness Tracker - Silver Aluminum Case with Porcelain Band (GPS, Bluetooth) at Harvey Norman",
+   "product_link": "https://www.google.co.nz/search?ibp=oshop&q=fitbit charge 6&prds=productid:18339555341368487758,headlineOfferDocid:18339555341368487758,imageDocid:10315551285468517273,rds:PC_7263715684349298595|PROD_PC_7263715684349298595,pvt:a&hl=en&gl=nz&udm=28",
+   "product_id": "18339555341368487758",
+   "immersive_product_page_token": "tok-18339555341368487758",
+   "source": "Harvey Norman New Zealand",
+   "price": "$220.00",
+   "extracted_price": 220.0
+  },
+  {
+   "position": 2,
+   "title": "Fitbit Charge 6 Obsidian / Black Aluminium - As New - Refurbished",
+   "product_link": "https://www.google.co.nz/search?ibp=oshop&q=fitbit charge 6&prds=productid:12686034365978423881,headlineOfferDocid:12686034365978423881,imageDocid:3161533424450999091,rds:PC_7263715684349298595|PROD_PC_7263715684349298595,pvt:a&hl=en&gl=nz&udm=28",
+   "product_id": "12686034365978423881",
+   "immersive_product_page_token": "tok-12686034365978423881",
+   "source": "MightyApe.co.nz",
+   "price": "$231.84",
+   "extracted_price": 231.84,
+   "second_hand_condition": "refurbished"
+  },
+  {
+   "position": 3,
+   "title": "Fitbit Charge 6 Porcelain / Silver Aluminium - As New - Refurbished",
+   "product_link": "https://www.google.co.nz/search?ibp=oshop&q=fitbit charge 6&prds=productid:14206673432961783348,headlineOfferDocid:14206673432961783348,imageDocid:584730833919087675,rds:PC_7263715684349298595|PROD_PC_7263715684349298595,pvt:a&hl=en&gl=nz&udm=28",
+   "product_id": "14206673432961783348",
+   "immersive_product_page_token": "tok-14206673432961783348",
+   "source": "Dick Smith NZ",
+   "price": "$231.84",
+   "extracted_price": 231.84,
+   "second_hand_condition": "refurbished"
+  },
+  {
+   "position": 4,
+   "title": "Fitbit Charge 6 Coral / Champagne Gold Aluminium - As New - Refurbished",
+   "product_link": "https://www.google.co.nz/search?ibp=oshop&q=fitbit charge 6&prds=productid:8817513639728735483,headlineOfferDocid:8817513639728735483,imageDocid:14322221592863378304,pvt:a&hl=en&gl=nz&udm=28",
+   "product_id": "8817513639728735483",
+   "immersive_product_page_token": "tok-8817513639728735483",
+   "source": "MightyApe.co.nz",
+   "price": "$231.84",
+   "extracted_price": 231.84,
+   "second_hand_condition": "refurbished"
+  },
+  {
+   "position": 5,
+   "title": "NEW Factory Sealed Black Fitbit Charge 6",
+   "product_link": "https://www.google.co.nz/search?ibp=oshop&q=fitbit charge 6&prds=productid:9357021813422053954,headlineOfferDocid:9357021813422053954,imageDocid:15771099722313908280,rds:PC_16425171534584877918|PROD_PC_16425171534584877918,pvt:a&hl=en&gl=nz&udm=28",
+   "product_id": "9357021813422053954",
+   "immersive_product_page_token": "tok-9357021813422053954",
+   "source": "u-buy.co.nz",
+   "price": "$330.00",
+   "extracted_price": 330.0
+  },
+  {
+   "position": 6,
+   "title": "Fitbit Charge 6 Sport Strap",
+   "product_link": "https://www.google.co.nz/search?ibp=oshop&q=fitbit charge 6&prds=productid:4149905975973001487,headlineOfferDocid:4149905975973001487,imageDocid:1786778192757243479,pvt:a&hl=en&gl=nz&udm=28",
+   "product_id": "4149905975973001487",
+   "immersive_product_page_token": "tok-4149905975973001487",
+   "source": "FitGear NZ",
+   "price": "$24.95",
+   "extracted_price": 24.95
+  },
+  {
+   "position": 7,
+   "title": "Fitbit Charge 6 Strap",
+   "product_link": "https://www.google.co.nz/search?ibp=oshop&q=fitbit charge 6&prds=catalogid:1580407190999826566,productid:1963865852940532074,headlineOfferDocid:16423933785896962669,imageDocid:2448937656094514803,gpcid:11361038207473908759,mid:576462881234953760,pvt:a&hl=en&gl=nz&udm=28",
+   "product_id": "1580407190999826566",
+   "immersive_product_page_token": "tok-1580407190999826566",
+   "source": "MightyApe.co.nz",
+   "price": "$14.90",
+   "extracted_price": 14.9,
+   "multiple_sources": true
+  },
+  {
+   "position": 8,
+   "title": "Fitbit Charge 6 Nylon Strap Green",
+   "product_link": "https://www.google.co.nz/search?ibp=oshop&q=fitbit charge 6&prds=productid:13181831516703473789,headlineOfferDocid:13181831516703473789,imageDocid:14603572114201321986,pvt:a&hl=en&gl=nz&udm=28",
+   "product_id": "13181831516703473789",
+   "immersive_product_page_token": "tok-13181831516703473789",
+   "source": "Dick Smith NZ",
+   "price": "$51.58",
+   "extracted_price": 51.58
+  },
+  {
+   "position": 23,
+   "title": "StrapsCo Evening Link Bracelet For Fitbit Charge 6",
+   "product_link": "https://www.google.co.nz/search?ibp=oshop&q=fitbit charge 6&prds=catalogid:4962897685180947499,productid:1260827225719125277,headlineOfferDocid:1057227136246227437,imageDocid:10429663457802303806,rds:PC_4210103424713462192|PROD_PC_4210103424713462192,gpcid:4210103424713462192,mid:576462781905299564,pvt:a&hl=en&gl=nz&udm=28",
+   "product_id": "4962897685180947499",
+   "immersive_product_page_token": "tok-4962897685180947499",
+   "source": "StrapsCo",
+   "price": "$56.96",
+   "extracted_price": 56.96,
+   "alternative_price": {
+    "price": "US$32",
+    "extracted_price": 32,
+    "currency": "US$"
+   }
+  },
+  {
+   "position": 27,
+   "title": "Fitbit Charge 6 with Heart Rate, GPS, 6-Month Premium, Google Apps + Pixel Buds Pro 2 Earbuds with Active Noise Cancellation and Tensor Chip",
+   "product_link": "https://www.google.co.nz/search?ibp=oshop&q=fitbit charge 6&prds=productid:9476847466338272956,headlineOfferDocid:9476847466338272956,imageDocid:13056404096762718970,pvt:a&hl=en&gl=nz&udm=28",
+   "product_id": "9476847466338272956",
+   "immersive_product_page_token": "tok-9476847466338272956",
+   "source": "Desertcart.ae",
+   "price": "$950.23",
+   "extracted_price": 950.23,
+   "alternative_price": {
+    "price": "AED 1,960",
+    "extracted_price": 1960,
+    "currency": "AED"
+   }
+  },
+  {
+   "position": 25,
+   "title": "Huawei Watch D2",
+   "product_link": "https://www.google.co.nz/search?ibp=oshop&q=fitbit charge 6&prds=catalogid:2343225647875557931,productid:1350494219784932730,headlineOfferDocid:9316060770531646036,imageDocid:9188905457823344051,rds:PC_9892380514001806465|PROD_PC_9892380514001806465,gpcid:17383343652408228735,mid:576462913634873046,pvt:a&hl=en&gl=nz&udm=28",
+   "product_id": "2343225647875557931",
+   "immersive_product_page_token": "tok-2343225647875557931",
+   "source": "PB Tech",
+   "price": "$539.00",
+   "extracted_price": 539.0,
+   "tag": "LOW PRICE"
+  }
+ ]
+}

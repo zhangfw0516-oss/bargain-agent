@@ -1,0 +1,15 @@
+{
+ "_note": "Recorded Firecrawl /v1/scrape of a PB Tech page 2026-10-04 with the old prompt: it returned the ex-GST price (172.17) instead of the inc-GST 198.00.",
+ "success": true,
+ "data": {
+  "json": {
+   "product_name": "Fitbit Charge 6 Fitness Tracker - Silver / White",
+   "price": "172.17",
+   "currency": "NZD",
+   "in_stock": true,
+   "brand": "Fitbit",
+   "colour": "Silver / White",
+   "capacity": null
+  }
+ }
+}

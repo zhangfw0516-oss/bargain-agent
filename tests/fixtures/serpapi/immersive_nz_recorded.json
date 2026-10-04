@@ -1,0 +1,27 @@
+{
+ "_note": "Recorded from SerpApi google_immersive_product on 2026-10-04; trimmed.",
+ "product_results": {
+  "title": "Fitbit Charge 6 Fitness Tracker - Silver Aluminum Case with Porcelain Band (GPS, Bluetooth) at Harvey Norman",
+  "brand": "Fitbit",
+  "stores": [
+   {
+    "name": "Harvey Norman New Zealand",
+    "link": "https://www.harveynorman.co.nz/connected-health-fitness/fitness-trackers-and-watches/fitness-trackers/fitbit-charge-6-fitness-tracker-silver-aluminum-case-with-porcelain-band-gps-bluetooth.html",
+    "title": "Fitbit Charge 6 Fitness Tracker - Silver Aluminum Case with Porcelain Band (GPS, Bluetooth) at Harvey Norman",
+    "rating": 4.3,
+    "reviews": 10,
+    "details_and_offers": [
+     "In stock online",
+     "Delivery between Tue – Thu $6.95",
+     "14-day returns"
+    ],
+    "price": "$220.00",
+    "extracted_price": 220.0,
+    "shipping": "+ $6.95",
+    "shipping_extracted": 6.95,
+    "total": "$226.95",
+    "extracted_total": 226.95
+   }
+  ]
+ }
+}
