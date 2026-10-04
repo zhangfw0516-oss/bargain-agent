@@ -197,6 +197,34 @@ def serpapi_daily_max_calls() -> int:
     return _int_in("SERPAPI_DAILY_MAX_CALLS", 20, 0, 100_000)
 
 
+def serper_api_key() -> str:
+    return _get("SERPER_API_KEY")
+
+
+def serper_timeout() -> float:
+    return _finite_positive_float(_get("SERPER_TIMEOUT"), "20.0", "SERPER_TIMEOUT")
+
+
+def serper_daily_max_calls() -> int:
+    return _int_in("SERPER_DAILY_MAX_CALLS", 200, 0, 100_000)
+
+
+def shopping_provider() -> str:
+    """Primary shopping search: ``serper`` or ``serpapi`` (``SHOPPING_PROVIDER``).
+
+    Unset means Serper when its key is configured, otherwise SerpApi.
+    """
+    raw = _get("SHOPPING_PROVIDER").lower()
+    if raw and raw not in ("serper", "serpapi"):
+        raise ConfigError("SHOPPING_PROVIDER must be serper or serpapi")
+    return raw or ("serper" if serper_api_key() else "serpapi")
+
+
+def daily_call_limit(provider: str) -> int | None:
+    """Local daily cap for a billable provider; None means counted but uncapped."""
+    return {"serpapi": serpapi_daily_max_calls, "serper": serper_daily_max_calls}.get(provider, lambda: None)()
+
+
 def tavily_api_key() -> str:
     return _get("TAVILY_API_KEY")
 
@@ -254,6 +282,11 @@ def find_max_recommendations() -> int:
 
 def monitor_min_frequency_minutes() -> int:
     return _int_in("MONITOR_MIN_FREQUENCY_MINUTES", 360, 5, 525_600)
+
+
+def monitor_max_sources() -> int:
+    """Most merchant listings one task may watch (the chosen one included)."""
+    return _int_in("MONITOR_MAX_SOURCES", 5, 1, 10)
 
 
 def monitor_max_offers() -> int:

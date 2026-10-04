@@ -319,3 +319,13 @@ def clean_text(value: Any, limit: int = 300) -> str | None:
 def is_http_url(value: Any) -> bool:
     text = str(value or "").lower()
     return text.startswith("https://") or text.startswith("http://")
+
+
+def listing_offer(result: ShoppingResult) -> Offer | None:
+    """A search listing as one seller's offer (Google lists what merchants sell now)."""
+    if not result.merchant or not result.price:
+        return None
+    return Offer(
+        merchant=result.merchant, price=result.price, currency=result.currency, link=result.link,
+        provider=result.provider, title=result.title, condition=result.condition, in_stock=True,
+    )

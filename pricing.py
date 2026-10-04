@@ -38,7 +38,7 @@ def quota_guard(db_path: Path | None = None) -> Callable[[str], None]:
     """Count every billable provider call; refuse SerpApi calls over the daily cap."""
 
     def guard(provider: str) -> None:
-        limit = config.serpapi_daily_max_calls() if provider == "serpapi" else None
+        limit = config.daily_call_limit(provider)
         if not storage.count_api_call(provider, limit, db_path=db_path):
             raise QuotaExceeded(f"Daily {provider} call limit ({limit}) reached; try again tomorrow.")
 

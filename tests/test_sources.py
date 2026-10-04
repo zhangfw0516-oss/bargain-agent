@@ -278,24 +278,120 @@ class TestScrapeDo(unittest.TestCase):
             ScrapeDo("t", sender=FakeSender(), timeout=5).extract("ftp://shop.example.nz/x")
 
 
+class TestSerper(unittest.TestCase):
+    KEY = "serper-secret-key"
+
+    def client(self, *responses):
+        from sources.serper import Serper
+
+        sender = FakeSender(*responses)
+        return Serper(self.KEY, sender=sender, locale=NZ, timeout=5), sender
+
+    def test_recorded_results(self):
+        client, sender = self.client(load_fixture("serper", "shopping_recorded.json"))
+        results = client.search("fitbit charge 6", limit=40)
+        call = sender.calls[0]
+        self.assertEqual((call["method"], call["headers"]["X-API-KEY"]), ("POST", self.KEY))
+        self.assertEqual((call["json"]["gl"], call["json"]["q"]), ("nz", "fitbit charge 6"))
+        harvey = results[0]
+        self.assertEqual((harvey.merchant, harvey.price, harvey.currency, harvey.product_id),
+                         ("Harvey Norman New Zealand", "220.00", "NZD", "18339555341368487758"))
+        self.assertIn("prds=productid:18339555341368487758", harvey.link)
+        self.assertIsNone(harvey.page_token)
+        self.assertEqual(sum(r.condition == "refurbished" for r in results), 3)
+        self.assertTrue(all(r.link.startswith("https://") for r in results))
+
+    def test_offers_rematch_by_product_id(self):
+        client, _ = self.client(load_fixture("serper", "shopping_recorded.json"))
+        offers, ref = client.offers(ProductRef("18339555341368487758", None, "fitbit charge 6"))
+        self.assertEqual([(o.merchant, o.price, o.in_stock) for o in offers], [("Harvey Norman New Zealand", "220.00", True)])
+        client, _ = self.client(load_fixture("serper", "shopping_recorded.json"))
+        self.assertEqual(client.offers(ProductRef("nope", None, "fitbit charge 6"))[0], [])
+        self.assertEqual(client.offers(ProductRef("x", None, None))[0], [])
+
+    def test_errors_and_key_safety(self):
+        for response, exc in (((401, {"message": "bad"}), base.AuthError), ((429, {}), base.RateLimited),
+                              (requests.exceptions.ConnectionError(self.KEY), base.Unavailable)):
+            client, _ = self.client(response)
+            with self.assertRaises(exc) as ctx:
+                client.search("x")
+            self.assertNotIn(self.KEY, str(ctx.exception))
+        from sources.serper import Serper
+
+        with self.assertRaises(base.NotConfigured):
+            Serper("", sender=FakeSender(), locale=NZ).search("x")
+
+
+class TestFallbackShopping(unittest.TestCase):
+    def test_secondary_is_used_when_primary_fails(self):
+        from sources.registry import FallbackShopping
+
+        class P:
+            name = "serper"
+
+            def search(self, q, limit=20):
+                raise base.RateLimited("quota")
+
+            def offers(self, ref):
+                raise base.Unavailable("down")
+
+        class S:
+            name = "serpapi"
+
+            def search(self, q, limit=20):
+                return ["s"]
+
+            def offers(self, ref):
+                return ["o"], ref
+
+        chain = FallbackShopping(P(), S())
+        self.assertEqual(chain.search("q"), ["s"])
+        self.assertEqual(chain.offers(ProductRef())[0], ["o"])
+        with self.assertRaises(base.RateLimited):
+            FallbackShopping(P()).search("q")
+
+
+def _keys(serpapi="", serper="", firecrawl="", tavily="", scrapedo="", order=("tavily", "firecrawl"), provider=""):
+    return [patch("config.serpapi_api_key", return_value=serpapi), patch("config.serper_api_key", return_value=serper),
+            patch("config.firecrawl_api_key", return_value=firecrawl), patch("config.tavily_api_key", return_value=tavily),
+            patch("config.scrapedo_api_key", return_value=scrapedo), patch("config.page_extractors", return_value=list(order)),
+            patch.dict("os.environ", {"SHOPPING_PROVIDER": provider})]
+
+
+def _build(**kw):
+    from contextlib import ExitStack
+
+    with ExitStack() as stack:
+        for p in _keys(**kw):
+            stack.enter_context(p)
+        return build_providers()
+
+
 class TestRegistry(unittest.TestCase):
     def test_missing_keys_are_reported_unavailable(self):
-        with patch("config.serpapi_api_key", return_value=""), patch("config.firecrawl_api_key", return_value=""), \
-                patch("config.tavily_api_key", return_value="t"), patch("config.page_extractors", return_value=["tavily", "firecrawl"]):
-            providers = build_providers()
+        providers = _build(tavily="t")
         self.assertIsNone(providers.shopping)
+        self.assertIsNone(providers.detail)
         self.assertEqual([p.name for p in providers.extractors], ["tavily"])
         self.assertIn("serpapi", providers.unavailable)
-        self.assertEqual(providers.status()["extractors"], "tavily")
+        self.assertIn("serper", providers.unavailable)
 
-    def test_all_configured(self):
-        with patch("config.serpapi_api_key", return_value="s"), patch("config.firecrawl_api_key", return_value="f"), \
-                patch("config.tavily_api_key", return_value="t"), patch("config.scrapedo_api_key", return_value="d"), \
-                patch("config.page_extractors", return_value=["firecrawl", "scrapedo", "tavily"]):
-            providers = build_providers()
-        self.assertEqual(providers.shopping.name, "serpapi")
+    def test_serper_is_primary_with_serpapi_fallback_and_detail(self):
+        providers = _build(serpapi="s", serper="k", firecrawl="f", tavily="t", scrapedo="d", order=("firecrawl", "scrapedo", "tavily"))
+        self.assertEqual(providers.shopping.name, "serper")
+        self.assertEqual(providers.shopping.secondary.name, "serpapi")
+        self.assertEqual(providers.detail.name, "serpapi")
         self.assertEqual(providers.supplement.name, "firecrawl")
         self.assertEqual([p.name for p in providers.extractors], ["firecrawl", "scrapedo", "tavily"])
+
+    def test_provider_choice(self):
+        self.assertEqual(_build(serpapi="s", serper="k", provider="serpapi").shopping.name, "serpapi")
+        only_serpapi = _build(serpapi="s")
+        self.assertEqual(only_serpapi.shopping.name, "serpapi")
+        self.assertIsNone(only_serpapi.shopping.secondary)
+        only_serper = _build(serper="k")
+        self.assertEqual(only_serper.shopping.name, "serper")
+        self.assertIsNone(only_serper.detail)
 
 
 if __name__ == "__main__":

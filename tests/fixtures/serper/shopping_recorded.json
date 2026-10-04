@@ -1,0 +1,81 @@
+{
+ "_note": "Recorded from Serper /shopping (q='fitbit charge 6', gl=nz) on 2026-10-05; trimmed, no key.",
+ "searchParameters": {
+  "q": "fitbit charge 6",
+  "gl": "nz",
+  "hl": "en",
+  "type": "shopping",
+  "num": 40,
+  "page": 1,
+  "location": "New Zealand",
+  "engine": "google"
+ },
+ "shopping": [
+  {
+   "title": "Fitbit Charge 6 Fitness Tracker - Silver Aluminum Case with Porcelain Band (GPS, Bluetooth) at Harvey Norman",
+   "source": "Harvey Norman New Zealand",
+   "price": "$220.00",
+   "rating": 4.2,
+   "ratingCount": 8400,
+   "productId": "18339555341368487758",
+   "position": 1
+  },
+  {
+   "title": "Fitbit Charge 6 Obsidian / Black Aluminium - As New - Refurbished",
+   "source": "MightyApe.co.nz",
+   "price": "$231.84",
+   "rating": 4.2,
+   "ratingCount": 8400,
+   "productId": "12686034365978423881",
+   "position": 2
+  },
+  {
+   "title": "Fitbit Charge 6 Porcelain / Silver Aluminium - As New - Refurbished",
+   "source": "Dick Smith NZ",
+   "price": "$231.84",
+   "rating": 4.2,
+   "ratingCount": 8400,
+   "productId": "14206673432961783348",
+   "position": 3
+  },
+  {
+   "title": "Fitbit Charge 6 Coral / Champagne Gold Aluminium - As New - Refurbished",
+   "source": "MightyApe.co.nz",
+   "price": "$231.84",
+   "productId": "8817513639728735483",
+   "position": 4
+  },
+  {
+   "title": "NEW Factory Sealed Black Fitbit Charge 6",
+   "source": "u-buy.co.nz",
+   "price": "$330.00",
+   "rating": 5,
+   "ratingCount": 10,
+   "productId": "9357021813422053954",
+   "position": 5
+  },
+  {
+   "title": "Fitbit Charge 6 Sport Strap",
+   "source": "FitGear NZ",
+   "price": "$24.95",
+   "productId": "4149905975973001487",
+   "position": 6
+  },
+  {
+   "title": "Fitbit Charge 6 Strap",
+   "source": "MightyApe.co.nz",
+   "link": "https://www.google.com/search?ibp=oshop&q=fitbit+charge+6&prds=localAnnotatedOfferId:1,catalogid:1580407190999826566,gpcid:11361038207473908759,pvo:2,pvt:hg&gl=nz&udm=28&pvorigin=2",
+   "price": "$14.90",
+   "productId": "1580407190999826566",
+   "position": 7
+  },
+  {
+   "title": "Fitbit Charge 6 Nylon Strap Green",
+   "source": "Dick Smith NZ",
+   "price": "$51.58",
+   "productId": "13181831516703473789",
+   "position": 8
+  }
+ ],
+ "credits": 2
+}

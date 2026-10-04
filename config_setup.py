@@ -20,8 +20,10 @@ REQUIRED_KEYS = (
     "LLM_API_KEY",           # OpenAI-compatible model key (DeepSeek by default)
     "LLM_API_BASE_URL",
     "LLM_MODEL",
-    "SERPAPI_API_KEY",       # Google Shopping search and seller offers
 )
+
+#: Google Shopping search: at least one of these (Serper is primary, SerpApi the backup).
+SEARCH_KEYS = ("SERPER_API_KEY", "SERPAPI_API_KEY")
 
 #: Keys the setup form may write.
 WRITABLE_KEYS = REQUIRED_KEYS + ("SMTP_FROM",)
@@ -79,13 +81,16 @@ def status() -> dict[str, Any]:
     """Which required keys are missing? Never includes any value."""
     file_values = _read_env_file(env_path())
     missing = [key for key in REQUIRED_KEYS if not _present(key, file_values)]
+    search_ready = any(_present(key, file_values) for key in SEARCH_KEYS)
+    if not search_ready:
+        missing.append(" or ".join(SEARCH_KEYS))
     smtp_missing = [key for key in SMTP_KEYS if not _present(key, file_values)]
     llm_missing = [key for key in LLM_KEYS if not _present(key, file_values)]
     return {
         "complete": not missing,
         "smtp_ready": not smtp_missing,
         "llm_ready": not llm_missing,
-        "search_ready": _present("SERPAPI_API_KEY", file_values),
+        "search_ready": search_ready,
         "extract_ready": any(_present(key, file_values) for key in EXTRACTOR_KEYS),
         "missing": missing,
     }

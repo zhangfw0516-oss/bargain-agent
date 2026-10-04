@@ -386,7 +386,7 @@ class TestTaskLifecycle(WebCase):
 class TestSetup(WebCase):
     def test_status_reports_missing_keys_only(self):
         data = self.client.get("/api/setup/status")[1]
-        self.assertIn("SERPAPI_API_KEY", data["missing"])
+        self.assertIn("SERPER_API_KEY or SERPAPI_API_KEY", data["missing"])
         self.assertEqual(data["providers"]["shopping"], "serpapi")
         self.assertNotIn(EMAIL, json.dumps(data))
 

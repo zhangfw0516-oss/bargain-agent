@@ -29,6 +29,7 @@ from sources.base import (
     clean_text,
     detect_condition,
     is_http_url,
+    listing_offer,
     parse_price,
     request_json,
 )
@@ -113,7 +114,7 @@ class SerpApi:
                 offers = self._immersive(result.page_token)
                 if offers:
                     return offers, fresh
-            listing = _offer_from_listing(result)
+            listing = listing_offer(result)
             return ([listing] if listing else []), fresh
         return [], ref
 
@@ -236,12 +237,3 @@ def _immersive_offers(data: dict[str, Any], locale) -> list[Offer]:
             offers.append(offer)
     return offers
 
-
-def _offer_from_listing(result: ShoppingResult) -> Offer | None:
-    """The search listing itself as an offer when Google shows no store list."""
-    if not result.merchant or not result.price:
-        return None
-    return Offer(
-        merchant=result.merchant, price=result.price, currency=result.currency, link=result.link, provider=NAME,
-        title=result.title, condition=result.condition, in_stock=True,
-    )
