@@ -11,7 +11,9 @@ Verified with real calls (scrubbed recordings in `tests/fixtures/serpapi/*record
 - Firecrawl search and JSON scrape work. Its extractor first returned the **ex-GST** price on a PB Tech page; both prompts now ask for the tax-inclusive price and returned NZ$198.00.
 - Scrape.do fetch works; text + JSON-LD through the price agent returned NZ$198.00.
 
-Still unverified: Tavily Extract (no current key tested), the understand/rewrite/select/describe/verify prompts on real model output (run `python -m evaluation --live` and real Find runs).
+- A real Find run (deepseek-flash) passed all five stages after capping the select input at 30 pre-ranked listings (60 listings had truncated its answer).
+
+Still unverified: Tavily Extract, the offer-verifier prompt on real offers, and `python -m evaluation --live`.
 
 ## Behaviour to be aware of
 

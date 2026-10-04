@@ -14,6 +14,9 @@ from agents import FALLBACK, OK, AgentResult, LLMOptions
 
 NAME = "select"
 PROMPT = "select.md"
+#: Listings shown to the model, pre-ranked; long lists made the answer truncate.
+MAX_EVIDENCE = 30
+MAX_SELECTED = 8
 
 
 def evidence_summary(item: dict[str, Any]) -> dict[str, Any]:
@@ -24,7 +27,7 @@ def evidence_summary(item: dict[str, Any]) -> dict[str, Any]:
         "merchant": item.get("merchant"),
         "price": item.get("price"),
         "currency": item.get("currency"),
-        "condition": item.get("condition") or "new/unknown",
+        "condition": item.get("condition"),
         "trusted": bool(item.get("trusted")),
         "source": item.get("provider"),
     }
@@ -69,8 +72,15 @@ def run(
     opts = opts or LLMOptions()
     if not evidence:
         return AgentResult([], OK, None)
-    known = {e["id"] for e in evidence}
-    payload = {"description": description, "need": need or {}, "evidence": [evidence_summary(e) for e in evidence]}
+    by_id = {e["id"]: e for e in evidence}
+    shown = [by_id[i] for i in fallback_order(evidence)[:MAX_EVIDENCE]]
+    known = {e["id"] for e in shown}
+    payload = {
+        "description": description,
+        "need": need or {},
+        "max_selected": MAX_SELECTED,
+        "evidence": [{k: v for k, v in evidence_summary(e).items() if v is not None} for e in shown],
+    }
     try:
         picked, unknown, reasoning = llm.call_json(
             PROMPT, payload, validate=lambda raw: clean(raw, known), agent=NAME, client=opts.client, model=opts.model
@@ -80,4 +90,4 @@ def run(
     note = f"Select agent referenced {unknown} unknown id(s); ignored." if unknown else None
     if not picked and reasoning:
         note = f"Select agent found nothing suitable: {reasoning}"
-    return AgentResult(picked, OK, note)
+    return AgentResult(picked[:MAX_SELECTED], OK, note)

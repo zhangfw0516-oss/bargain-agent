@@ -14,15 +14,16 @@ MAX_SUMMARY_CHARS = 600
 
 
 def _item(rec: dict[str, Any]) -> dict[str, Any]:
-    return {
+    item = {
         "id": rec["id"],
         "title": rec.get("title"),
         "merchant": rec.get("merchant"),
         "price": rec.get("price"),
         "currency": rec.get("currency"),
-        "condition": rec.get("condition") or "new/unknown",
+        "condition": rec.get("condition"),
         "trusted": bool(rec.get("trusted")),
     }
+    return {k: v for k, v in item.items() if v is not None}
 
 
 def clean(raw: Any, ids: set[str]) -> dict[str, str]:
