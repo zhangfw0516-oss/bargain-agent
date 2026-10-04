@@ -7,7 +7,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import cli
-import discovery
 import storage
 
 
@@ -60,7 +59,7 @@ class TestCLI(unittest.TestCase):
     # R3: add without confirmation is rejected.
     def test_add_requires_confirmation(self):
         with patch("cli.config._get", return_value="user@example.com"):
-            with patch("cli.agent.parse_user_instruction") as mock_parse:
+            with patch("cli.task_parser.run") as mock_parse:
                 mock_parse.return_value = self._sample_payload()
                 with patch("sys.stdout", new=io.StringIO()) as stdout, patch("sys.stdin", new=io.StringIO("n\n")):
                     rc = cli.main(["--db-path", str(self.db_path), "add", "Monitor kindle"])
@@ -72,7 +71,7 @@ class TestCLI(unittest.TestCase):
     # R3: add with confirmation creates the task.
     def test_add_confirmed_creates_task(self):
         with patch("cli.config._get", return_value="user@example.com"):
-            with patch("cli.agent.parse_user_instruction") as mock_parse:
+            with patch("cli.task_parser.run") as mock_parse:
                 mock_parse.return_value = self._sample_payload()
                 with patch("sys.stdout", new=io.StringIO()), patch("sys.stdin", new=io.StringIO("y\n")):
                     rc = cli.main(["--db-path", str(self.db_path), "add", "Monitor kindle"])
@@ -84,7 +83,7 @@ class TestCLI(unittest.TestCase):
     # R3: --yes skips interactive confirmation.
     def test_add_yes_flag(self):
         with patch("cli.config._get", return_value="user@example.com"):
-            with patch("cli.agent.parse_user_instruction") as mock_parse:
+            with patch("cli.task_parser.run") as mock_parse:
                 mock_parse.return_value = self._sample_payload()
                 rc = cli.main(["--db-path", str(self.db_path), "add", "--yes", "Monitor kindle"])
         self.assertEqual(rc, 0)
@@ -94,7 +93,7 @@ class TestCLI(unittest.TestCase):
     # R3: unsupported/needs_clarification is not created.
     def test_add_needs_clarification_not_created(self):
         payload = {**self._sample_payload(), "status": "needs_clarification", "missing_fields": ["frequency_minutes"], "clarification_question": "How often?"}
-        with patch("cli.agent.parse_user_instruction") as mock_parse:
+        with patch("cli.task_parser.run") as mock_parse:
             mock_parse.return_value = payload
             with patch("sys.stdout", new=io.StringIO()):
                 rc = cli.main(["--db-path", str(self.db_path), "add", "Monitor kindle"])
@@ -135,7 +134,7 @@ class TestCLI(unittest.TestCase):
     def test_add_with_condition_is_blocked(self):
         payload = {**self._sample_payload(), "condition": "new"}
         with patch("cli.config._get", return_value="user@example.com"):
-            with patch("cli.agent.parse_user_instruction", return_value=payload):
+            with patch("cli.task_parser.run", return_value=payload):
                 with patch("sys.stderr", new=io.StringIO()) as stderr:
                     rc = cli.main(["--db-path", str(self.db_path), "add", "--yes", "Monitor a new Kindle"])
         self.assertEqual(rc, 4)
@@ -146,7 +145,7 @@ class TestCLI(unittest.TestCase):
     def test_add_with_any_condition_is_allowed(self):
         payload = {**self._sample_payload(), "condition": "any"}
         with patch("cli.config._get", return_value="user@example.com"):
-            with patch("cli.agent.parse_user_instruction", return_value=payload):
+            with patch("cli.task_parser.run", return_value=payload):
                 rc = cli.main(["--db-path", str(self.db_path), "add", "--yes", "Monitor a Kindle"])
         self.assertEqual(rc, 0)
         self.assertEqual(len(self._tasks()), 1)
@@ -243,71 +242,6 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(storage.get_send_permit(task_id, db_path=self.db_path)["send_in_flight"], 1)
 
     # ------------------------------------------------ Stage B closeout / Stage C: CLI
-
-    def test_search_reports_sources_and_creates_a_multi_source_task(self):
-        pb = self._offer(retailer="PB Tech", url="https://www.pbtech.co.nz/product/air")
-        jb = self._offer(
-            retailer="JB Hi-Fi", url="https://www.jbhifi.co.nz/products/air", title="Google Fitbit Air (Obsidian)"
-        )
-        with patch("sys.stdout", new=io.StringIO()) as stdout:
-            rc = self._run_search(
-                ["--select", "1,2", "--yes", "find Fitbit Air"],
-                result=self._result(offers=[pb, jb]),
-            )
-        self.assertEqual(rc, 0)
-        out = stdout.getvalue()
-        self.assertIn("Sources to monitor (2)", out)
-        self.assertIn("Created task", out)
-
-        tasks = self._tasks()
-        self.assertEqual(len(tasks), 1)
-        sources = storage.list_task_sources(tasks[0]["id"], db_path=self.db_path)
-        self.assertEqual([s["retailer"] for s in sources], ["PB Tech", "JB Hi-Fi"])
-
-    def test_search_cannot_monitor_an_unconfirmed_offer(self):
-        # The Stage B gap: the user asked for black, this listing is "Berry".
-        berry = self._offer(
-            retailer="PB Tech",
-            url="https://www.pbtech.co.nz/product/air-berry",
-            title="Google Fitbit Air Fitness Tracker - Berry",
-            match=discovery.MATCH_NEEDS_CONFIRMATION,
-        )
-        with patch("sys.stderr", new=io.StringIO()) as stderr:
-            rc = self._run_search(["--select", "1", "--yes", "find Fitbit Air black"], result=self._result(offers=[berry]))
-        self.assertEqual(rc, 1)
-        self.assertIn("could not be confirmed", stderr.getvalue())
-        self.assertEqual(self._tasks(), [])
-
-    def test_unconfirmed_offer_is_shown_but_not_offered_as_a_choice(self):
-        obsidian = self._offer(url="https://www.pbtech.co.nz/product/air")
-        berry = self._offer(
-            url="https://www.pbtech.co.nz/product/air-berry",
-            title="Google Fitbit Air Fitness Tracker - Berry",
-            match=discovery.MATCH_NEEDS_CONFIRMATION,
-        )
-        with patch("sys.stdout", new=io.StringIO()) as stdout:
-            rc = self._run_search(["find Fitbit Air black"], result=self._result(offers=[obsidian, berry]))
-        self.assertEqual(rc, 3)  # no selection made; nothing created
-        out = stdout.getvalue()
-        self.assertIn("NOT SELECTABLE", out)
-        self.assertIn("Berry", out)
-        self.assertEqual(self._tasks(), [])
-
-    def test_search_refuses_mixing_two_colours_in_one_task(self):
-        obsidian = self._offer(url="https://www.pbtech.co.nz/product/air", title="Google Fitbit Air (Obsidian)")
-        berry = self._offer(
-            retailer="JB Hi-Fi",
-            url="https://www.jbhifi.co.nz/products/air-berry",
-            title="Google Fitbit Air (Berry)",
-        )
-        with patch("sys.stderr", new=io.StringIO()) as stderr:
-            rc = self._run_search(
-                ["--select", "1,2", "--yes", "find Fitbit Air"], result=self._result(offers=[obsidian, berry])
-            )
-        self.assertEqual(rc, 1)
-        self.assertIn("same product variant", stderr.getvalue())
-        self.assertEqual(self._tasks(), [])
-
     def test_sources_lists_a_tasks_sources(self):
         task_id = self._create_task()
         with patch("sys.stdout", new=io.StringIO()) as stdout:
@@ -449,216 +383,81 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("not found", stderr.getvalue())
 
-    # ---------------------------------------------------------------- Stage B
+    # ---------------------------------------------------------------- find
 
-    def _request(self, **overrides) -> dict:
-        base = {
-            "schema_version": "2",
-            "status": "ready",
-            "product_name": "Fitbit Air",
-            "url": None,
-            "budget": "200.00",
-            "currency": "NZD",
-            "colour": "black",
-            "capacity": None,
-            "condition": None,
-            "comparison": "lte",
-            "frequency_minutes": 60,
-            "missing_fields": [],
-            "clarification_question": None,
-        }
-        base.update(overrides)
-        return base
+    FIND_RESULT = {
+        "status": "ready", "description": "fitbit", "need": {"budget": "250.00", "currency": "NZD"},
+        "queries": ["fitbit charge 6"], "stages": {"select": "ok"}, "notes": [], "evidence": [], "usage": {},
+        "recommendations": [
+            {"id": "e1", "title": "Fitbit Charge 6", "link": "https://www.google.co.nz/shopping/product/111",
+             "merchant": "Noel Leeming", "price": "229.00", "currency": "NZD", "product_id": "111",
+             "page_token": "tok", "search_query": "fitbit charge 6", "monitorable": True, "trusted": True,
+             "summary": "好手环"},
+            {"id": "e2", "title": "Fitbit Inspire", "link": "https://small.example.nz/inspire",
+             "merchant": "small.example.nz", "price": "99.00", "currency": "NZD", "product_id": None,
+             "monitorable": False, "trusted": False},
+        ],
+    }
 
-    def _offer(self, **overrides) -> dict:
-        base = {
-            "retailer": "PB Tech",
-            "title": "Google Fitbit Air Fitness Tracker - Obsidian",
-            "url": "https://www.pbtech.co.nz/product/WTHFIT114043/Google-Fitbit-Air-Fitness-Tracker---Obsidian---Up",
-            "price": "239.00",
-            "currency": "NZD",
-            "in_stock": True,
-            "shipping_cost": None,
-            "shipping_known": False,
-            "condition": None,
-            "queried_at": "2026-09-23T00:00:00+00:00",
-            "within_budget": False,
-            "buyable": True,
-            "excluded_reason": None,
-            # Only an explicit `same` is selectable; the default stands in for a
-            # real discovery result row whose match verdict was confirmed.
-            "match": discovery.MATCH_SAME,
-            "notes": ["Shipping cost not stated; not included in the price shown."],
-        }
-        base.update(overrides)
-        return base
+    def _run_find(self, argv_extra, result=None, stdin=""):
+        import copy
+        from types import SimpleNamespace
 
-    def _result(self, offers=None, **overrides) -> dict:
-        offers = offers if offers is not None else [self._offer()]
-        base = {
-            "query": "Fitbit Air",
-            "currency": "NZD",
-            "budget": "200.00",
-            "queried_at": "2026-09-23T00:00:00+00:00",
-            "sources": [{"retailer": "PB Tech", "status": "ok", "candidates": 1, "error": None}],
-            "candidates": [],
-            "offers": offers,
-            "notes": [],
-            "counts": {"candidates": 1, "same": 1, "needs_confirmation": 0, "different": 0, "offers": len(offers)},
-        }
-        base.update(overrides)
-        return base
+        from sources.base import Offer, ProductRef
 
-    def _run_search(self, argv_extra, request=None, result=None):
-        request = request if request is not None else self._request()
-        result = result if result is not None else self._result()
-        with patch("cli.config._get", return_value="user@example.com"):
-            with patch("cli.agent.parse_shopping_request", return_value=request):
-                with patch("cli.discovery.search_and_compare", return_value=result):
-                    return cli.main(["--db-path", str(self.db_path), "search", *argv_extra])
+        offers = SimpleNamespace(offers=lambda ref: ([Offer("JB Hi-Fi", "219.00", "NZD", "https://jb.example.nz/p", "serpapi")],
+                                                     ProductRef(ref.product_id, "tok2", ref.search_query, ref.title)))
+        providers = SimpleNamespace(shopping=None, supplement=None, offers=offers)
+        import os
 
-    def test_search_shows_comparison_and_creates_a_monitor_task_on_confirmation(self):
+        with patch.dict(os.environ, {"DEFAULT_NOTIFY_EMAIL": "user@example.com"}), \
+                patch("sources.registry.build_providers", return_value=providers), \
+                patch("cli.pipeline.run_find", return_value=copy.deepcopy(result or self.FIND_RESULT)), \
+                patch("sys.stdin", new=io.StringIO(stdin)):
+            return cli.main(["--db-path", str(self.db_path), "find", *argv_extra])
+
+    def test_find_lists_recommendations_and_creates_a_product_task(self):
         with patch("sys.stdout", new=io.StringIO()) as stdout:
-            rc = self._run_search(["--select", "1", "--yes", "find Fitbit Air"])
+            rc = self._run_find(["--select", "1", "--yes", "fitbit under 250"])
         self.assertEqual(rc, 0)
         out = stdout.getvalue()
-        self.assertIn("PB Tech", out)
-        self.assertIn("NZD 239.00", out)
-        self.assertIn("Shipping cost not stated", out)
-        self.assertIn("Created task", out)
+        self.assertIn("1. Fitbit Charge 6", out)
+        self.assertIn("[unverified merchant]", out)
+        self.assertIn("JB Hi-Fi: NZD 219.00", out)
+        self.assertIn("every seller", out)
+        task = self._tasks()[0]
+        self.assertEqual((task["target_price"], task["currency"]), ("250.00", "NZD"))
+        self.assertGreaterEqual(task["frequency_minutes"], 1440)
+        source = storage.list_task_sources(task["id"], db_path=self.db_path)[0]
+        self.assertEqual((source["source_kind"], source["product_id"], source["page_token"]), ("serpapi_product", "111", "tok2"))
 
-        tasks = self._tasks()
-        self.assertEqual(len(tasks), 1)
-        task = tasks[0]
-        self.assertEqual(task["url"], self._offer()["url"])
-        self.assertEqual(task["target_price"], "200.00")
-        self.assertEqual(task["currency"], "NZD")
-        self.assertEqual(task["frequency_minutes"], 60)
-        self.assertEqual(task["status"], "active")
+    def test_find_single_listing_becomes_a_url_source(self):
+        with patch("sys.stdout", new=io.StringIO()):
+            rc = self._run_find(["--select", "2", "--yes", "--target-price", "90", "fitbit"])
+        self.assertEqual(rc, 0)
+        source = storage.list_task_sources(self._tasks()[0]["id"], db_path=self.db_path)[0]
+        self.assertEqual((source["source_kind"], source["url"]), ("url", "https://small.example.nz/inspire"))
 
-    def test_search_creates_nothing_when_the_selection_is_cancelled(self):
-        with patch("sys.stdout", new=io.StringIO()) as stdout, patch("sys.stdin", new=io.StringIO("\n")):
-            rc = self._run_search(["find Fitbit Air"])
-        self.assertEqual(rc, 3)
+    def test_find_creates_nothing_when_cancelled_or_declined(self):
+        with patch("sys.stdout", new=io.StringIO()) as stdout:
+            self.assertEqual(self._run_find(["fitbit"], stdin=chr(10)), 3)
         self.assertIn("nothing was created", stdout.getvalue())
+        with patch("sys.stdout", new=io.StringIO()):
+            self.assertEqual(self._run_find(["--select", "1", "fitbit"], stdin="n" + chr(10)), 3)
         self.assertEqual(self._tasks(), [])
 
-    def test_search_creates_nothing_when_confirmation_is_declined(self):
-        with patch("sys.stdout", new=io.StringIO()) as stdout, patch("sys.stdin", new=io.StringIO("n\n")):
-            rc = self._run_search(["--select", "1", "find Fitbit Air"])
-        self.assertEqual(rc, 3)
-        self.assertIn("cancelled", stdout.getvalue().lower())
+    def test_find_rejects_bad_selection_and_missing_target(self):
+        with patch("sys.stdout", new=io.StringIO()), patch("sys.stderr", new=io.StringIO()):
+            self.assertEqual(self._run_find(["--select", "9", "--yes", "fitbit"]), 1)
+            no_budget = {**self.FIND_RESULT, "need": {}}
+            self.assertEqual(self._run_find(["--select", "1", "--yes", "fitbit"], result=no_budget), 2)
         self.assertEqual(self._tasks(), [])
 
-    def test_search_needing_clarification_creates_nothing(self):
-        request = self._request(status="needs_clarification", frequency_minutes=None, missing_fields=["frequency_minutes"])
+    def test_find_without_recommendations(self):
         with patch("sys.stdout", new=io.StringIO()) as stdout:
-            rc = self._run_search(["find Fitbit Air"], request=request)
+            rc = self._run_find(["--yes", "zzz"], result={**self.FIND_RESULT, "recommendations": []})
         self.assertEqual(rc, 2)
-        self.assertIn("Need more information", stdout.getvalue())
-        self.assertEqual(self._tasks(), [])
-
-    def test_search_with_a_url_points_at_the_add_flow(self):
-        request = self._request(url="https://www.pbtech.co.nz/product/WTHFIT114043/Google-Fitbit-Air-Fitness-Tracker---Obsidian---Up")
-        with patch("sys.stderr", new=io.StringIO()) as stderr:
-            with patch("cli.agent.parse_shopping_request", return_value=request):
-                rc = cli.main(["--db-path", str(self.db_path), "search", "monitor this URL"])
-        self.assertEqual(rc, 2)
-        self.assertIn("add", stderr.getvalue())
-        self.assertEqual(self._tasks(), [])
-
-    def test_search_without_a_budget_cannot_create_a_monitor_task(self):
-        request = self._request(budget=None)
-        with patch("sys.stderr", new=io.StringIO()) as stderr:
-            rc = self._run_search(["--select", "1", "--yes", "find Fitbit Air"], request=request)
-        self.assertEqual(rc, 2)
-        self.assertIn("target price", stderr.getvalue())
-        self.assertEqual(self._tasks(), [])
-
-    def test_search_with_no_offers_creates_nothing(self):
-        result = self._result(offers=[], counts={"candidates": 0, "same": 0, "needs_confirmation": 0, "different": 0, "offers": 0})
-        with patch("sys.stdout", new=io.StringIO()) as stdout:
-            rc = self._run_search(["--yes", "find Fitbit Air"], result=result)
-        self.assertEqual(rc, 2)
-        self.assertIn("No comparable offer", stdout.getvalue())
-        self.assertEqual(self._tasks(), [])
-
-    def test_excluded_offer_cannot_be_monitored(self):
-        good = self._offer()
-        excluded = self._offer(
-            retailer="Mighty Ape", price=None, currency=None, excluded_reason="price_unknown"
-        )
-        with patch("sys.stderr", new=io.StringIO()) as stderr:
-            rc = self._run_search(
-                ["--select", "2", "--yes", "find Fitbit Air"],
-                result=self._result(offers=[good, excluded]),
-            )
-        self.assertEqual(rc, 1)
-        self.assertIn("cannot be monitored", stderr.getvalue())
-        self.assertEqual(self._tasks(), [])
-
-    def test_search_with_only_excluded_offers_says_so(self):
-        excluded = self._offer(price=None, excluded_reason="price_unknown")
-        with patch("sys.stdout", new=io.StringIO()) as stdout:
-            rc = self._run_search(["--yes", "find Fitbit Air"], result=self._result(offers=[excluded]))
-        self.assertEqual(rc, 2)
-        self.assertIn("Nothing can be monitored", stdout.getvalue())
-        self.assertEqual(self._tasks(), [])
-
-    def test_search_reports_a_partial_source_failure(self):
-        result = self._result(
-            sources=[
-                {"retailer": "PB Tech", "status": "ok", "candidates": 1, "error": None},
-                {"retailer": "Mighty Ape", "status": "error", "candidates": 0, "error": "connection refused"},
-            ],
-            notes=["Mighty Ape could not be searched: connection refused"],
-        )
-        with patch("sys.stdout", new=io.StringIO()) as stdout:
-            rc = self._run_search(["--select", "1", "--yes", "find Fitbit Air"], result=result)
-        self.assertEqual(rc, 0)
-        out = stdout.getvalue()
-        self.assertIn("FAILED (connection refused)", out)
-        self.assertIn("Mighty Ape could not be searched", out)
-
-    # ---------------------------------------------------------------- B2: condition
-    # `search` must refuse an explicit new/used/refurbished requirement exactly like
-    # `add`, and must not quietly drop it and continue.
-
-    def test_search_with_condition_is_refused_even_with_yes(self):
-        request = self._request(condition="used")
-        with patch("sys.stderr", new=io.StringIO()) as stderr:
-            with patch("cli.agent.parse_shopping_request", return_value=request):
-                with patch("cli.discovery.search_and_compare") as searched:
-                    rc = cli.main(["--db-path", str(self.db_path), "search", "--select", "1", "--yes", "find a used Fitbit Air"])
-        self.assertEqual(rc, 4)
-        self.assertIn("not supported", stderr.getvalue())
-        self.assertIn("used", stderr.getvalue())
-        self.assertEqual(self._tasks(), [])
-        # The refusal happens before any retailer is contacted.
-        self.assertEqual(searched.call_count, 0)
-
-    def test_search_with_new_condition_is_refused(self):
-        request = self._request(condition="new")
-        with patch("sys.stderr", new=io.StringIO()) as stderr:
-            rc = self._run_search(["--select", "1", "--yes", "find a new Fitbit Air"], request=request)
-        self.assertEqual(rc, 4)
-        self.assertIn("not supported", stderr.getvalue())
-        self.assertEqual(self._tasks(), [])
-
-    def test_search_with_any_condition_still_works(self):
-        request = self._request(condition="any")
-        with patch("sys.stdout", new=io.StringIO()) as stdout:
-            rc = self._run_search(["--select", "1", "--yes", "find any Fitbit Air"], request=request)
-        self.assertEqual(rc, 0)
-        self.assertIn("Created task", stdout.getvalue())
-        self.assertEqual(len(self._tasks()), 1)
-
-    def test_search_without_a_condition_still_works(self):
-        with patch("sys.stdout", new=io.StringIO()) as stdout:
-            rc = self._run_search(["--select", "1", "--yes", "find Fitbit Air"], request=self._request(condition=None))
-        self.assertEqual(rc, 0)
-        self.assertIn("Created task", stdout.getvalue())
-        self.assertEqual(len(self._tasks()), 1)
+        self.assertIn("No suitable product", stdout.getvalue())
 
 
 if __name__ == "__main__":
