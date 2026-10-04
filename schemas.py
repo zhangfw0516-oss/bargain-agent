@@ -224,7 +224,7 @@ def validate_quote(quote: dict) -> dict:
 PRICE_EXTRACTION_FIELDS = {"product_name", "price", "currency", "in_stock"}
 #: Optional identity attributes the LLM may also state from the page text. They are
 #: never required: a page that states no brand/colour/capacity still yields a valid
-#: price. When present they help `discovery._detail_identity` confirm a web candidate
+#: price. When present they describe the page's variant for the quote; they
 #: as the same product, but they never override a different verdict there.
 PRICE_EXTRACTION_OPTIONAL = {"brand", "colour", "capacity"}
 
