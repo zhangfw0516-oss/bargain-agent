@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+<head>
+  <title>Search results - Mighty Ape</title>
+  <!--
+    SYNTHETIC FIXTURE — not evidence about the live site.
+
+    Verification status (2026-09-24, B1): the corrected domain www.mightyape.co.nz IS
+    reachable, but the shop's bot-protection service (response header: server: DataDome)
+    refuses every automated request with HTTP 403 — both the site root and the search
+    path. That block is not bypassed, so neither the search URL nor the real markup has
+    been confirmed.
+
+    This fixture therefore only describes the two structures the adapter claims to
+    support — a JSON-LD ItemList of Products, and product links under /product/ — so the
+    parsing logic itself is covered offline. It is NOT proof that the live site uses this
+    markup or these URLs. See project_progress/KNOWN_ISSUES.md.
+  -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "item": {
+          "@type": "Product",
+          "name": "Google Fitbit Air Fitness Tracker - Obsidian",
+          "sku": "MA-FITBIT-AIR-OBS",
+          "model": "GA05183-US",
+          "url": "https://www.mightyape.co.nz/product/google-fitbit-air-fitness-tracker-obsidian",
+          "offers": {
+            "@type": "Offer",
+            "price": "246.99",
+            "priceCurrency": "NZD",
+            "availability": "https://schema.org/InStock"
+          }
+        }
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "item": {
+          "@type": "Product",
+          "name": "Fitbit Charge 6 Fitness Tracker - Black",
+          "sku": "MA-CHARGE6-BLK",
+          "url": "https://www.mightyape.co.nz/product/fitbit-charge-6-fitness-tracker-black",
+          "offers": {"@type": "Offer", "price": "199.00", "priceCurrency": "NZD"}
+        }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+<div class="product-grid">
+  <a href="/product/google-fitbit-air-fitness-tracker-obsidian">Google Fitbit Air - Obsidian</a>
+  <a href="/product/fitbit-charge-6-fitness-tracker-black">Fitbit Charge 6 - Black</a>
+  <a href="/help/returns">Returns policy</a>
+</div>
+</body>
+</html>

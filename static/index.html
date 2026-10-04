@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bargain Agent — Price Monitor</title>
+<style>
+  :root { font-family: system-ui, Arial, sans-serif; }
+  body { margin: 0; background: #f5f6f8; color: #1c2330; }
+  header { background: #1f3a5f; color: #fff; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 18px; margin: 0; }
+  .badge { font-size: 12px; background: #ffd166; color: #333; border-radius: 10px; padding: 2px 10px; }
+  .badge.live { background: #ff6b6b; color: #fff; }
+  main { max-width: 980px; margin: 18px auto; padding: 0 14px; }
+  section { background: #fff; border: 1px solid #dde3ea; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  textarea { width: 100%; min-height: 64px; font-size: 14px; padding: 8px; box-sizing: border-box; }
+  button { cursor: pointer; border: 1px solid #2b5aa7; background: #2b5aa7; color: #fff; border-radius: 5px; padding: 6px 14px; font-size: 13px; }
+  button.secondary { background: #fff; color: #2b5aa7; }
+  button.danger { background: #b3372f; border-color: #b3372f; }
+  button:disabled { opacity: .5; cursor: default; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e7ebf0; vertical-align: top; }
+  .muted { color: #67707d; }
+  .ok { color: #1c7c3c; } .bad { color: #b3372f; } .warn { color: #9a6a00; }
+  .chip { display: inline-block; border: 1px solid #c9d3df; border-radius: 12px; padding: 2px 10px; margin: 2px; font-size: 12px; cursor: pointer; background: #fff; }
+  .offer { border: 1px solid #e2e7ee; border-radius: 6px; padding: 8px 10px; margin: 6px 0; }
+  .offer.unselectable { opacity: .55; background: #f4f4f4; }
+  .verdict-same { color: #1c7c3c; font-weight: 600; }
+  .flag { font-size: 12px; padding: 1px 8px; border-radius: 8px; background: #eef2f7; }
+  .error { background: #fdecea; border: 1px solid #f2b8b5; color: #86231d; padding: 8px 12px; border-radius: 6px; margin: 8px 0; }
+  .info { background: #eef4fd; border: 1px solid #c6dbf7; color: #1f3a5f; padding: 8px 12px; border-radius: 6px; margin: 8px 0; }
+  .liveWarning { background: #fff3e0; border: 1px solid #ffcc80; color: #8a4b00; padding: 8px 12px; border-radius: 6px; margin: 8px 0; }
+  label { font-size: 13px; }
+  input[type=number], input[type=text], select { padding: 4px 6px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .hidden { display: none; }
+  .sources li { margin: 4px 0; }
+  #confirmPanel { border: 2px solid #2b5aa7; border-radius: 8px; padding: 12px; background: #f4f8ff; }
+  #confirmPanel dl { display: grid; grid-template-columns: 140px 1fr; row-gap: 4px; font-size: 13px; }
+  #confirmPanel dt { color: #67707d; }
+  #confirmPanel dd { margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Bargain Agent — Price Monitor</h1>
+  <span class="badge" id="modeBadge">…</span>
+</header>
+<main>
+  <div id="liveWarning" class="liveWarning hidden"></div>
+  <div id="globalError" class="error hidden"></div>
+
+  <section id="findSection">
+    <h2>A · Intelligent find — describe it in your own words</h2>
+    <textarea id="findDescription" placeholder="e.g. a pair of wireless earbuds for running, budget NZD 200, black"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button id="findBtn" onclick="doFind()">Find with AI</button>
+      <span id="findStatus" class="muted"></span>
+    </div>
+    <div id="findProgress" class="info hidden"></div>
+    <div id="findRecommendations"></div>
+    <div id="findNotes" class="muted"></div>
+  </section>
+
+  <section id="setupSection">
+    <h2>Setup — notification recipient</h2>
+    <div class="row">
+      <label>Recipient email <input type="text" id="setupEmail" size="26" placeholder="you@example.com"></label>
+      <button class="secondary" onclick="doSetupSave()">Save recipient</button>
+      <span id="setupStatus" class="muted"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>1 · Find a product (English or Chinese)</h2>
+    <p class="muted">Examples:
+      <span class="chip" onclick="fillExample(this)">find AeroBuds Pro black, budget NZD 200, check every 60 minutes</span>
+      <span class="chip" onclick="fillExample(this)">找 AeroBuds Pro 黑色 预算 200 纽币 每 60 分钟查一次</span>
+      <span class="chip" onclick="fillExample(this)">find AeroBuds Pro black</span>
+    </p>
+    <textarea id="instruction" placeholder="e.g. find AeroBuds Pro black, budget NZD 200, check every 60 minutes"></textarea>
+    <div id="supplementForm" class="row hidden" style="margin-top:8px">
+      <label>Budget <input type="number" id="supBudget" step="0.01" style="width:90px"></label>
+      <label>Currency
+        <select id="supCurrency"><option value="NZD">NZD</option><option value="USD">USD</option><option value="AUD">AUD</option></select>
+      </label>
+      <label>Every (min) <input type="number" id="supFreq" value="60" style="width:70px"></label>
+      <button class="secondary" onclick="doSearch(true)">Search with these details</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="searchBtn" onclick="doSearch(false)">Search &amp; compare</button>
+      <span id="searchStatus" class="muted"></span>
+    </div>
+    <div id="clarification" class="info hidden"></div>
+  </section>
+
+  <section id="resultSection" class="hidden">
+    <h2>2 · Comparison result</h2>
+    <div id="sourcesSummary" class="muted"></div>
+    <div id="needsConfirmation"></div>
+    <div id="rejected"></div>
+    <div id="offers"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="selectBtn" onclick="doSelect()" disabled>Select the ticked offers &amp; review</button>
+      <span class="muted">Only offers marked “confirmed match” can be monitored.</span>
+    </div>
+  </section>
+
+  <section id="confirmSection" class="hidden">
+    <h2>3 · Confirm before creating the monitor task</h2>
+    <div id="confirmPanel"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="confirmBtn" onclick="doConfirmCreate()">Confirm — create task</button>
+      <button class="secondary" onclick="hideConfirm()">Cancel</button>
+      <span id="confirmStatus" class="muted"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Add a task by product URL</h2>
+    <div class="row">
+      <label>URL <input type="text" id="addUrl" size="46" placeholder="https://…"></label>
+      <label>Product name <input type="text" id="addName" size="24"></label>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <label>Target price <input type="number" id="addPrice" step="0.01" style="width:90px"></label>
+      <label>Currency
+        <select id="addCurrency"><option value="NZD">NZD</option><option value="USD">USD</option><option value="AUD">AUD</option></select>
+      </label>
+      <label>Comparison
+        <select id="addComparison"><option value="lte">at or below (≤)</option><option value="lt">below (&lt;)</option></select>
+      </label>
+      <label>Every (min) <input type="number" id="addFreq" value="60" style="width:70px"></label>
+      <button onclick="doAddByUrl()">Add task</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Continuous monitoring</h2>
+    <div id="monitorStatus" class="muted">…</div>
+    <div class="row" style="margin-top:6px">
+      <button id="monitorStartBtn" onclick="doMonitorStart()">Start monitoring</button>
+      <button id="monitorStopBtn" class="danger hidden" onclick="doMonitorStop()">Stop monitoring</button>
+    </div>
+  </section>
+
+  <section>
+    <div class="row" style="justify-content:space-between">
+      <h2>Monitored tasks</h2>
+      <div class="row">
+        <button class="secondary" onclick="runDueChecks()">Run due checks</button>
+        <button class="secondary" onclick="loadTasks()">Refresh</button>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>ID</th><th>Product</th><th>Target</th><th>Status</th><th>Sources</th><th>Next check</th><th>Actions</th></tr></thead>
+      <tbody id="taskRows"></tbody>
+    </table>
+  </section>
+
+  <section id="detailSection" class="hidden">
+    <h2>Task detail</h2>
+    <div id="detailSummary"></div>
+    <h2 style="margin-top:14px">Sources</h2>
+    <ul class="sources" id="detailSources"></ul>
+    <h2 style="margin-top:14px">Edit task</h2>
+    <div class="row">
+      <label>Target price <input type="number" id="newPrice" step="0.01" style="width:100px"></label>
+      <label>Comparison
+        <select id="newComparison"><option value="lte">at or below (≤)</option><option value="lt">below (&lt;)</option></select>
+      </label>
+      <label>Frequency (min) <input type="number" id="newFreq" style="width:80px"></label>
+      <button id="modifyBtn" onclick="doModify()">Apply change</button>
+    </div>
+    <p class="muted">Only fields you actually changed are sent. Changing the price or
+      comparison ends the current deal episode; changing only the frequency does not.</p>
+    <h2 style="margin-top:14px">Price history (newest first)</h2>
+    <table>
+      <thead><tr><th>Time (UTC)</th><th>Source</th><th>Observation</th></tr></thead>
+      <tbody id="historyRows"></tbody>
+    </table>
+    <h2 style="margin-top:14px">Notification episodes</h2>
+    <table>
+      <thead><tr><th>Created (UTC)</th><th>Status</th><th>Attempts</th><th>Last error</th></tr></thead>
+      <tbody id="eventRows"></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+'use strict';
+
+// ---------------------------------------------------------------- utilities
+// Untrusted text (product names, errors, notes, URLs) is always rendered with
+// textContent — never interpolated into HTML.
+function el(tag, text, className) {
+  const node = document.createElement(tag);
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  if (className) node.className = className;
+  return node;
+}
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+function safeUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol === 'http:' || u.protocol === 'https:') return url;
+  } catch (e) { /* fall through */ }
+  return null;
+}
+
+let csrfToken = null;
+let currentToken = null;
+let pendingSelection = null;   // {urls, summary} for the confirm panel
+let currentDetailId = null;
+let detailInitial = null;      // snapshot of the task's editable fields
+let liveMode = false;
+
+function showError(msg) {
+  const box = document.getElementById('globalError');
+  clear(box);
+  if (!msg) { box.classList.add('hidden'); return; }
+  box.appendChild(el('span', msg));
+  box.classList.remove('hidden');
+}
+
+function getCookie(name) {
+  for (const part of (document.cookie || '').split(';')) {
+    const [k, v] = part.split('=');
+    if (k.trim() === name) return v;
+  }
+  return null;
+}
+
+async function api(path, opts) {
+  const init = opts || {};
+  init.headers = Object.assign({'Content-Type': 'application/json'}, init.headers || {});
+  if (init.method && init.method !== 'GET') {
+    if (!csrfToken) csrfToken = getCookie('csrftoken');
+    init.headers['X-CSRF-Token'] = csrfToken || '';
+  }
+  const resp = await fetch(path, init);
+  let data = {};
+  try { data = await resp.json(); } catch (e) { /* empty */ }
+  if (!resp.ok) {
+    showError(data.error || ('Request failed: ' + resp.status));
+    throw new Error(data.error || resp.status);
+  }
+  showError(null);
+  return data;
+}
+
+function fillExample(node) {
+  document.getElementById('instruction').value = node.textContent;
+}
+
+function stockCell(v) {
+  if (v === 1 || v === true) return el('span', 'in stock', 'ok');
+  if (v === 0 || v === false) return el('span', 'out of stock', 'bad');
+  return el('span', 'stock unknown', 'warn');
+}
+
+// ---------------------------------------------------------------- search
+async function doSearch(withSupplement) {
+  const instruction = document.getElementById('instruction').value.trim();
+  if (!instruction) { showError('Please type what you are looking for.'); return; }
+  const body = {instruction};
+  if (withSupplement) {
+    const b = document.getElementById('supBudget').value;
+    const c = document.getElementById('supCurrency').value;
+    const f = document.getElementById('supFreq').value;
+    if (b) body.budget = b;
+    if (c) body.currency = c;
+    if (f) body.frequency_minutes = f;
+  }
+  document.getElementById('searchStatus').textContent = 'Searching…';
+  const data = await api('/api/search', {method: 'POST', body: JSON.stringify(body)});
+  document.getElementById('searchStatus').textContent = '';
+  document.getElementById('clarification').classList.add('hidden');
+  if (data.status === 'needs_clarification' || data.status === 'unsupported') {
+    const box = document.getElementById('clarification');
+    clear(box);
+    box.appendChild(el('span', data.message || 'More information is needed.'));
+    if ((data.missing_fields || []).includes('budget') || (data.missing_fields || []).includes('currency')) {
+      document.getElementById('supplementForm').classList.remove('hidden');
+    }
+    box.classList.remove('hidden');
+    document.getElementById('resultSection').classList.add('hidden');
+    return;
+  }
+  document.getElementById('supplementForm').classList.add('hidden');
+  renderResult(data);
+}
+
+// ---------------------------------------------------------------- intelligent find
+async function doFind() {
+  const description = document.getElementById('findDescription').value.trim();
+  if (!description) { showError('Please describe what you are looking for.'); return; }
+  const btn = document.getElementById('findBtn');
+  btn.disabled = true;
+  document.getElementById('findStatus').textContent = 'Thinking, searching the web…';
+  document.getElementById('findProgress').classList.add('hidden');
+  clear(document.getElementById('findRecommendations'));
+  clear(document.getElementById('findNotes'));
+  let data;
+  try {
+    data = await api('/api/find', {method: 'POST', body: JSON.stringify({description})});
+  } finally {
+    btn.disabled = false;
+    document.getElementById('findStatus').textContent = '';
+  }
+  renderFind(data);
+}
+
+function renderFind(data) {
+  const progress = data.progress || {};
+  const box = document.getElementById('findProgress');
+  clear(box);
+  const partial = data.status !== 'ready';
+  box.appendChild(el('span',
+    (partial ? 'Partial result — ' : 'Done — ') +
+    (progress.searches || 0) + ' web search(es), ' +
+    (progress.detail_fetches || 0) + ' page(s) read, ' +
+    (progress.evidence || 0) + ' product(s) found.'));
+  box.classList.toggle('warn', partial);
+  box.classList.remove('hidden');
+
+  const notes = document.getElementById('findNotes');
+  clear(notes);
+  (data.notes || []).forEach(n => notes.appendChild(el('div', n, 'muted')));
+
+  const list = document.getElementById('findRecommendations');
+  clear(list);
+  const recs = data.recommendations || [];
+  if (!recs.length) {
+    list.appendChild(el('p', 'No concrete product could be recommended. Try a more specific description.', 'muted'));
+    return;
+  }
+  recs.forEach(rec => {
+    const row = el('div', null, 'offer');
+    const head = el('div', null, 'row');
+    head.appendChild(el('b', rec.title || '(untitled product)'));
+    head.appendChild(el('span', ' — ' + (rec.price ? (rec.currency || '') + ' ' + rec.price : 'price not confirmed')));
+    if (rec.in_stock === true) head.appendChild(el('span', 'in stock', 'ok'));
+    else if (rec.in_stock === false) head.appendChild(el('span', 'out of stock', 'bad'));
+    else head.appendChild(el('span', 'stock unknown', 'warn'));
+    head.appendChild(el('span', 'via ' + (rec.source || 'web search'), 'flag'));
+    row.appendChild(head);
+    const url = safeUrl(rec.url);
+    if (url) {
+      const a = el('a', url, 'muted');
+      a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      row.appendChild(a);
+    } else {
+      row.appendChild(el('div', String(rec.url || ''), 'muted'));
+    }
+    if (rec.summary) row.appendChild(el('div', rec.summary, 'muted'));
+    if (rec.fetch_error) row.appendChild(el('div', 'could not read price: ' + rec.fetch_error, 'warn'));
+    const actions = el('div', null, 'row');
+    const pickBtn = el('button', 'Choose this product', 'secondary');
+    pickBtn.addEventListener('click', () => doFindConfirm(data.token, rec.provenance_id, pickBtn));
+    actions.appendChild(pickBtn);
+    row.appendChild(actions);
+    list.appendChild(row);
+  });
+}
+
+async function doFindConfirm(token, provenanceId, btn) {
+  btn.disabled = true;
+  try {
+    const data = await api('/api/find/confirm',
+      {method: 'POST', body: JSON.stringify({token, provenance_id: provenanceId})});
+    // The specific-product comparison now flows into the SAME review/confirm
+    // panels the standard search uses — no new confirmation path.
+    renderResult(data);
+    document.getElementById('resultSection').scrollIntoView({behavior: 'smooth'});
+  } catch (e) {
+    btn.disabled = false;
+  }
+}
+
+function renderResult(data) {
+  currentToken = data.token;
+  pendingSelection = null;
+  const result = data.result;
+  const req = data.request;
+  document.getElementById('resultSection').classList.remove('hidden');
+
+  const summary = document.getElementById('sourcesSummary');
+  clear(summary);
+  summary.appendChild(el('span', 'Searching for '));
+  summary.appendChild(el('b', req.product_name));
+  if (req.colour) summary.appendChild(el('span', ', colour ' + req.colour));
+  if (req.budget) summary.appendChild(el('span', ', budget ' + (req.currency || '') + ' ' + req.budget));
+  summary.appendChild(el('span', ' — checked at ' + result.queried_at + '. '));
+  result.sources.forEach((s, i) => {
+    if (i) summary.appendChild(el('span', ' · '));
+    let text = s.retailer + ': ' + s.candidates + ' candidate(s)';
+    let cls = '';
+    if (s.status === 'disabled') { text = s.retailer + ': NOT SEARCHED (disabled)'; cls = 'warn'; }
+    if (s.status === 'unavailable') { text = s.retailer + ': NOT SEARCHED (' + (s.error || 'not configured') + ')'; cls = 'warn'; }
+    if (s.status !== 'ok' && s.status !== 'disabled' && s.status !== 'unavailable') { text = s.retailer + ': FAILED (' + s.error + ')'; cls = 'bad'; }
+    summary.appendChild(el('span', text, cls));
+  });
+
+  const needs = document.getElementById('needsConfirmation');
+  clear(needs);
+  (result.candidates || []).filter(c => c.match === 'needs_confirmation').forEach(c => {
+    needs.appendChild(el('div', 'needs confirmation: ' + c.title + ' — ' + c.reasons.join('; '), 'warn'));
+  });
+  const rejected = document.getElementById('rejected');
+  clear(rejected);
+  (result.candidates || []).filter(c => c.match === 'different').forEach(c => {
+    rejected.appendChild(el('div', 'rejected: ' + c.title + ' — ' + c.reasons.join('; '), 'bad'));
+  });
+
+  const offersBox = document.getElementById('offers');
+  clear(offersBox);
+  const offers = result.offers || [];
+  if (!offers.length) {
+    offersBox.appendChild(el('p', 'No comparable offer was found.', 'muted'));
+  }
+  offers.forEach((o, idx) => {
+    const n = idx + 1;
+    const row = el('div', null, 'offer' + ((!o.excluded_reason && o.match === 'same') ? '' : ' unselectable'));
+    const head = el('div', null, 'row');
+    const selectableRow = !o.excluded_reason && o.match === 'same';
+    if (selectableRow) {
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.className = 'offerPick';
+      box.value = o.url;
+      box.addEventListener('change', updateSelectButton);
+      head.appendChild(box);
+    }
+    head.appendChild(el('b', n + '. ' + o.retailer));
+    head.appendChild(el('span', ' — ' + (o.price ? o.currency + ' ' + o.price : 'price unknown')));
+    head.appendChild(stockCell(o.in_stock));
+    const flags = [];
+    if (o.source_kind === 'web_search') flags.push('found via web search');
+    if (o.excluded_reason) flags.push('EXCLUDED (' + o.excluded_reason + ')');
+    else if (o.match !== 'same') flags.push('NOT SELECTABLE (' + (o.match || 'unverified') + ')');
+    else if (o.within_budget === true) flags.push('within budget');
+    else if (o.within_budget === false) flags.push('above budget');
+    flags.forEach(f => head.appendChild(el('span', f, 'flag')));
+    row.appendChild(head);
+    row.appendChild(el('div', o.title || o.detail_name || ''));
+    const shownUrl = safeUrl(o.url);
+    row.appendChild(el('div', (shownUrl ? shownUrl : '[invalid URL suppressed]') +
+      ' · queried ' + o.queried_at, 'muted'));
+    (o.notes || []).forEach(nt => row.appendChild(el('div', 'note: ' + nt, 'muted')));
+    offersBox.appendChild(row);
+  });
+  updateSelectButton();
+}
+
+function updateSelectButton() {
+  const any = document.querySelectorAll('.offerPick:checked').length > 0;
+  document.getElementById('selectBtn').disabled = !any;
+}
+
+// ---------------------------------------------------------------- selection + confirmation
+async function doSelect() {
+  const urls = Array.from(document.querySelectorAll('.offerPick:checked')).map(n => n.value);
+  if (!urls.length) return;
+  const data = await api('/api/search/select', {
+    method: 'POST', body: JSON.stringify({token: currentToken, urls})
+  });
+  // Preview panel (nothing is created yet): product, sources, price condition,
+  // frequency, recipient. Creation happens only on explicit confirmation.
+  pendingSelection = {token: currentToken, urls};
+  const p = data.preview;
+  const panel = document.getElementById('confirmPanel');
+  clear(panel);
+  const dl = document.createElement('dl');
+  const addRow = (label, value) => {
+    dl.appendChild(el('dt', label));
+    const dd = document.createElement('dd');
+    dd.appendChild(el('span', value));
+    dl.appendChild(dd);
+  };
+  addRow('Product', p.product_name);
+  p.sources.forEach((s, i) => {
+    addRow('Source ' + (i + 1), (s.retailer || '') + ' ' + s.url);
+  });
+  addRow('Price condition', p.comparison + ' ' + p.target_price + ' ' + p.currency);
+  addRow('Check frequency', 'every ' + p.frequency_minutes + ' minutes');
+  addRow('Notifications to', p.notify_email);
+  if (data.email_warning) addRow('Warning', data.email_warning);
+  panel.appendChild(dl);
+  document.getElementById('confirmSection').classList.remove('hidden');
+  document.getElementById('confirmBtn').disabled = false;
+  document.getElementById('confirmStatus').textContent = '';
+  document.getElementById('confirmSection').scrollIntoView({behavior: 'smooth'});
+}
+
+function hideConfirm() {
+  document.getElementById('confirmSection').classList.add('hidden');
+  pendingSelection = null;
+}
+
+async function doConfirmCreate() {
+  if (!pendingSelection) return;
+  const btn = document.getElementById('confirmBtn');
+  btn.disabled = true;   // anti-double-click
+  document.getElementById('confirmStatus').textContent = 'Creating…';
+  try {
+    const data = await api('/api/search/confirm', {
+      method: 'POST',
+      body: JSON.stringify({token: pendingSelection.token, urls: pendingSelection.urls})
+    });
+    if (data.duplicate) {
+      document.getElementById('confirmStatus').textContent =
+        'This task was already created — no duplicate was made (task #' + data.created + ').';
+    } else {
+      document.getElementById('confirmStatus').textContent = 'Created task #' + data.created + '.';
+    }
+    document.getElementById('resultSection').classList.add('hidden');
+    hideConfirm();
+    await loadTasks();
+    await openDetail(data.created);
+  } catch (e) {
+    btn.disabled = false;
+    document.getElementById('confirmStatus').textContent = '';
+  }
+}
+
+// ---------------------------------------------------------------- tasks
+async function loadTasks() {
+  const data = await api('/api/tasks');
+  liveMode = !data.demo;
+  const badge = document.getElementById('modeBadge');
+  clear(badge);
+  badge.appendChild(el('span', data.demo ? 'DEMO MODE — demo shops, fake notifications'
+                                         : 'LIVE MODE — real shops, real notifications'));
+  badge.className = 'badge' + (data.demo ? '' : ' live');
+  const warn = document.getElementById('liveWarning');
+  clear(warn);
+  warn.classList.add('hidden');
+  renderMonitor(data.monitor);
+
+  const rows = document.getElementById('taskRows');
+  clear(rows);
+  if (!data.tasks.length) {
+    const tr = document.createElement('tr');
+    const td = el('td', 'No tasks yet — start with a search above.', 'muted');
+    td.colSpan = 7;
+    tr.appendChild(td);
+    rows.appendChild(tr);
+  }
+  data.tasks.forEach(t => {
+    const tr = document.createElement('tr');
+    const idCell = document.createElement('td');
+    const link = el('a', '#' + t.id);
+    link.href = '#';
+    link.addEventListener('click', ev => { ev.preventDefault(); openDetail(t.id); });
+    idCell.appendChild(link);
+    tr.appendChild(idCell);
+    tr.appendChild(el('td', t.product_name));
+    tr.appendChild(el('td', t.comparison + ' ' + t.target_price + ' ' + t.currency));
+    const st = document.createElement('td');
+    st.appendChild(el('span', t.status, t.status === 'active' ? 'ok' : 'muted'));
+    tr.appendChild(st);
+    const src = document.createElement('td');
+    t.sources.forEach((s, i) => {
+      if (i) src.appendChild(el('br'));
+      const label = (s.retailer || s.url) + (s.source_kind === 'web_search' ? ' [web]' : '');
+      src.appendChild(el('span', label + (s.last_error ? ' ⚠ ' + s.last_error : ''),
+                         s.enabled ? 'ok' : 'muted'));
+    });
+    tr.appendChild(src);
+    tr.appendChild(el('td', t.next_check_at || '', 'muted'));
+    const actions = document.createElement('td');
+    const mkBtn = (label, fn, cls) => {
+      const b = el('button', label, cls || 'secondary');
+      b.addEventListener('click', fn);
+      return b;
+    };
+    actions.appendChild(mkBtn('Check now', () => doCheck(t.id)));
+    if (t.status === 'active') actions.appendChild(mkBtn('Pause', () => doStatus(t.id, 'pause')));
+    if (t.status === 'paused') actions.appendChild(mkBtn('Resume', () => doStatus(t.id, 'resume')));
+    if (t.status !== 'stopped') actions.appendChild(mkBtn('Stop', () => doStatus(t.id, 'stop'), 'danger'));
+    tr.appendChild(actions);
+    rows.appendChild(tr);
+  });
+}
+
+async function doCheck(id) {
+
+  // Live mode: the server independently requires this flag before it will run
+  // a check that could send a real email.
+  const body = liveMode ? {confirm: true} : {};
+  const data = await api('/api/tasks/' + id + '/check', {method: 'POST', body: JSON.stringify(body)});
+  if (data.skipped) {
+    window.alert('Check skipped: ' + data.reason);
+  } else if (data.is_deal) {
+    window.alert('Deal found at ' + data.chosen_retailer + ' (' + data.chosen_price + '). Notification ' +
+      (data.notified ? (liveMode ? 'sent.' : 'recorded (demo).') : 'not sent: ' + (data.notification_cancelled_reason || 'unknown') + '.'));
+  } else {
+    window.alert('No deal. ' + (data.event_reset ? 'Episode ended.' : ''));
+  }
+  await loadTasks();
+  if (currentDetailId === id) await openDetail(id);
+}
+
+async function runDueChecks() {
+
+  const body = liveMode ? {confirm: true} : {};
+  const data = await api('/api/check/due', {method: 'POST', body: JSON.stringify(body)});
+  window.alert('Checked ' + data.checked + ' due task(s).');
+  await loadTasks();
+}
+
+async function doStatus(id, action) {
+  await api('/api/tasks/' + id + '/' + action, {method: 'POST', body: '{}'});
+  await loadTasks();
+  if (currentDetailId === id) await openDetail(id);
+}
+
+// ---------------------------------------------------------------- add by URL
+async function doAddByUrl() {
+  const body = {
+    url: document.getElementById('addUrl').value.trim(),
+    product_name: document.getElementById('addName').value.trim(),
+    target_price: document.getElementById('addPrice').value,
+    currency: document.getElementById('addCurrency').value,
+    comparison: document.getElementById('addComparison').value,
+    frequency_minutes: document.getElementById('addFreq').value,
+  };
+  const data = await api('/api/tasks/add', {method: 'POST', body: JSON.stringify(body)});
+  window.alert('Created task #' + data.created + '.');
+  document.getElementById('addUrl').value = '';
+  document.getElementById('addName').value = '';
+  await loadTasks();
+  await openDetail(data.created);
+}
+
+// ---------------------------------------------------------------- detail + edit
+async function openDetail(id) {
+  currentDetailId = id;
+  const t = await api('/api/tasks/' + id);
+  detailInitial = {
+    target_price: t.target_price,
+    comparison: t.comparison,
+    frequency_minutes: t.frequency_minutes,
+  };
+  // Initialise ALL edit fields from THIS task — switching tasks never leaves
+  // the previous task's values behind.
+  document.getElementById('newPrice').value = t.target_price;
+  document.getElementById('newComparison').value = t.comparison;
+  document.getElementById('newFreq').value = t.frequency_minutes;
+
+  const sum = document.getElementById('detailSummary');
+  clear(sum);
+  sum.appendChild(el('b', '#' + t.id + ' ' + t.product_name));
+  sum.appendChild(el('span', ' — target ' + t.comparison + ' ' + t.target_price + ' ' + t.currency +
+    ', every ' + t.frequency_minutes + ' min · notifications to ' + t.notify_email + ' · '));
+  sum.appendChild(el('span', 'status ' + t.status, t.status === 'active' ? 'ok' : 'muted'));
+  sum.appendChild(el('span', ' · next check ' + (t.next_check_at || '')));
+
+  const sources = document.getElementById('detailSources');
+  clear(sources);
+  t.sources.forEach(s => {
+    const li = document.createElement('li');
+    li.appendChild(el('b', s.retailer || s.url));
+    li.appendChild(el('span', (s.enabled ? 'enabled' : 'DISABLED'), 'flag'));
+    if (s.last_error) li.appendChild(el('span', 'last error: ' + s.last_error, 'bad'));
+    const urlLine = el('div', (safeUrl(s.url) || '[invalid URL suppressed]'), 'muted');
+    urlLine.style.fontSize = '12px';
+    li.appendChild(urlLine);
+    const latestLine = el('div');
+    if (s.latest) {
+      if (s.latest.error) latestLine.appendChild(el('span', 'FAILED: ' + s.latest.error, 'bad'));
+      else {
+        latestLine.appendChild(el('span', (s.latest.currency || '') + ' ' + (s.latest.price || 'price unknown') + ', '));
+        latestLine.appendChild(stockCell(s.latest.in_stock));
+        latestLine.appendChild(el('span', ' · fetched ' + s.latest.fetched_at, 'muted'));
+      }
+    } else {
+      latestLine.appendChild(el('span', 'never checked', 'muted'));
+    }
+    li.appendChild(latestLine);
+    const btn = el('button', s.enabled ? 'Disable' : 'Enable', 'secondary');
+    btn.addEventListener('click', () => toggleSource(s.id, !s.enabled));
+    li.appendChild(btn);
+    sources.appendChild(li);
+  });
+
+  const historyRows = document.getElementById('historyRows');
+  clear(historyRows);
+  if (!(t.history || []).length) {
+    const tr = document.createElement('tr');
+    const td = el('td', 'No observations recorded yet.', 'muted');
+    td.colSpan = 3;
+    tr.appendChild(td);
+    historyRows.appendChild(tr);
+  }
+  (t.history || []).forEach(h => {
+    const tr = document.createElement('tr');
+    tr.appendChild(el('td', h.fetched_at, 'muted'));
+    tr.appendChild(el('td', h.retailer || ('source ' + h.source_id)));
+    const obs = document.createElement('td');
+    if (h.error) obs.appendChild(el('span', 'FAILED: ' + h.error, 'bad'));
+    else {
+      obs.appendChild(el('span', (h.currency || '') + ' ' + (h.price || 'price unknown') + ', '));
+      obs.appendChild(stockCell(h.in_stock));
+    }
+    tr.appendChild(obs);
+    historyRows.appendChild(tr);
+  });
+
+  const eventRows = document.getElementById('eventRows');
+  clear(eventRows);
+  if (!(t.events || []).length) {
+    const tr = document.createElement('tr');
+    const td = el('td', 'No notification episodes yet.', 'muted');
+    td.colSpan = 4;
+    tr.appendChild(td);
+    eventRows.appendChild(tr);
+  }
+  (t.events || []).forEach(e => {
+    const tr = document.createElement('tr');
+    tr.appendChild(el('td', e.created_at, 'muted'));
+    tr.appendChild(el('td', e.status));
+    tr.appendChild(el('td', e.attempts));
+    tr.appendChild(el('td', e.last_error || '', 'muted'));
+    eventRows.appendChild(tr);
+  });
+
+  document.getElementById('detailSection').classList.remove('hidden');
+  document.getElementById('detailSection').scrollIntoView({behavior: 'smooth'});
+}
+
+async function doModify() {
+  if (currentDetailId === null || !detailInitial) return;
+  // Send ONLY the fields the user actually changed, compared against the
+  // snapshot taken when this task's detail was opened. Changing just the
+  // frequency therefore never touches the target price or lt/lte.
+  const body = {};
+  const p = document.getElementById('newPrice').value;
+  const c = document.getElementById('newComparison').value;
+  const f = document.getElementById('newFreq').value;
+  if (p !== '' && p !== detailInitial.target_price) body.target_price = p;
+  if (c !== detailInitial.comparison) body.comparison = c;
+  if (f !== '' && String(f) !== String(detailInitial.frequency_minutes)) body.frequency_minutes = f;
+  if (!Object.keys(body).length) { showError('Nothing changed to apply.'); return; }
+  const btn = document.getElementById('modifyBtn');
+  btn.disabled = true;
+  try {
+    const data = await api('/api/tasks/' + currentDetailId + '/modify', {
+      method: 'POST', body: JSON.stringify(body)
+    });
+    window.alert(data.episode_ended
+      ? 'Changed — the current deal episode has ended and will be re-judged.'
+      : 'Changed (frequency only — the current deal episode is untouched).');
+    await openDetail(currentDetailId);
+    await loadTasks();
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function toggleSource(sourceId, enable) {
+  await api('/api/tasks/' + currentDetailId + '/sources/' + (enable ? 'enable' : 'disable'), {
+    method: 'POST', body: JSON.stringify({source_id: sourceId})
+  });
+  await openDetail(currentDetailId);
+  await loadTasks();
+}
+
+// ---------------------------------------------------------------- monitor loop
+function renderMonitor(mon) {
+  const box = document.getElementById('monitorStatus');
+  clear(box);
+  const label = mon.status === 'running' ? 'running (started ' + mon.started_at + ')'
+    : mon.status === 'stopped' ? 'stopped — cannot be restarted in this process; restart the app to monitor again'
+    : 'not started';
+  box.appendChild(el('span', 'Status: ' + label, mon.status === 'running' ? 'ok' : 'muted'));
+  document.getElementById('monitorStartBtn').classList.toggle('hidden', mon.status !== 'not_started');
+  document.getElementById('monitorStopBtn').classList.toggle('hidden', mon.status !== 'running');
+}
+
+async function doMonitorStart() {
+  const body = {};
+
+  if (liveMode) body.confirm = true;
+  const data = await api('/api/monitor/start', {method: 'POST', body: JSON.stringify(body)});
+  window.alert('Continuous monitoring started.' + (data.email_warning ? ' ' + data.email_warning : ''));
+  await loadTasks();
+}
+
+async function doMonitorStop() {
+  const data = await api('/api/monitor/stop', {method: 'POST', body: '{}'});
+
+  await loadTasks();
+}
+
+// ---------------------------------------------------------------- setup
+async function loadSetupStatus() {
+  try {
+    const data = await api('/api/setup/status');
+    const line = document.getElementById('setupStatus');
+    const smtp = data.smtp_ready ? 'SMTP: configured' : 'SMTP: MISSING in .env';
+    const llm = data.llm_ready ? 'DeepSeek: configured' : 'DeepSeek: MISSING in .env';
+    if (data.complete) {
+      line.textContent = 'Configuration complete (' + smtp + ', ' + llm + ').';
+    } else {
+      line.textContent = smtp + ' · ' + llm
+        + ' — fill the missing entries in .env, then restart the app.';
+    }
+  } catch (e) { /* status is advisory */ }
+}
+
+async function doSetupSave() {
+  const v = document.getElementById('setupEmail').value.trim();
+  if (!v) return;
+  try {
+    const data = await api('/api/setup', {
+      method: 'POST',
+      body: JSON.stringify({DEFAULT_NOTIFY_EMAIL: v})
+    });
+    document.getElementById('setupStatus').textContent = data.complete
+      ? 'Saved. Configuration complete.'
+      : 'Saved. Still missing in .env: ' + data.missing.join(', ');
+  } catch (e) {
+    document.getElementById('setupStatus').textContent = 'Save failed.';
+  }
+}
+
+// ---------------------------------------------------------------- boot
+async function boot() {
+  try {
+    const resp = await fetch('/api/csrf');
+    const data = await resp.json();
+    csrfToken = data.csrf_token || getCookie('csrftoken');
+  } catch (e) { /* the double-submit cookie from GET / still works */ }
+  await loadTasks();
+  await loadSetupStatus();
+}
+boot();
+</script>
+</body>
+</html>

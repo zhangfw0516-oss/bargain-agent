@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+.venv/
+
+# Environment & secrets
+.env
+*.secret
+# config-incident backups (contain credentials-adjacent data; never commit or package)
+.env.pre-cleanup-backup
+.env.*-backup
+.env*.bak
+.runtime-cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Task / test artifacts
+*.log
+*.db
+.pytest_cache/

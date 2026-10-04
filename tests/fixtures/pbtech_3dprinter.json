@@ -1,0 +1,8 @@
+{
+  "_meta": {
+    "source": "pbtech.co.nz",
+    "captured_at": "2026-09-23T04:38:00+00:00",
+    "notes": "Fixture price for offline testing; not a live price."
+  },
+  "html": "<!DOCTYPE html><html><head><title>Creality K1 MAX 3D Printer</title><script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"Product\",\"name\":\"Creality K1 MAX 3D Printer\",\"offers\":{\"@type\":\"Offer\",\"price\":\"1399.00\",\"priceCurrency\":\"NZD\",\"availability\":\"https://schema.org/InStock\"}}</script></head><body></body></html>"
+}
