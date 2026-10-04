@@ -11,9 +11,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import cli
-import discovery
 import scheduler
-import scraper
+import pricing
 import storage
 
 PB_URL = "https://www.pbtech.co.nz/product/air"
@@ -231,7 +230,7 @@ class TestAggregatedCheck(StageCTestCase):
 
         def fetcher(url):
             if "pbtech" in url:
-                raise scraper.ScraperError("connection refused")
+                raise pricing.ObservationError("connection refused")
             return quote_for(url, "239.00", retailer="JB Hi-Fi")
 
         result = scheduler.check_task(task, fetcher=fetcher, send_fn=self.ok_send, db_path=self.db_path)
@@ -249,7 +248,7 @@ class TestAggregatedCheck(StageCTestCase):
 
         def broken_then_high(url):
             if "pbtech" in url:
-                raise scraper.ScraperError("timeout")
+                raise pricing.ObservationError("timeout")
             return quote_for(url, "400.00", retailer="JB Hi-Fi")
 
         result = scheduler.check_task(task, fetcher=broken_then_high, send_fn=self.ok_send, db_path=self.db_path)
@@ -319,7 +318,7 @@ class TestAggregatedCheck(StageCTestCase):
 
         def fetcher(url):
             if "pbtech" in url:
-                raise scraper.ScraperError("403 Forbidden")
+                raise pricing.ObservationError("403 Forbidden")
             return quote_for(url, "239.00", retailer="JB Hi-Fi")
 
         scheduler.check_task(task, fetcher=fetcher, send_fn=capture_send, db_path=self.db_path)
@@ -384,7 +383,7 @@ class TestSourceAndHistory(StageCTestCase):
 
         def fetcher(url):
             if "pbtech" in url:
-                raise scraper.ScraperError("boom")
+                raise pricing.ObservationError("boom")
             return quote_for(url, "239.00", retailer="JB Hi-Fi")
 
         scheduler.check_task(task, fetcher=fetcher, send_fn=self.ok_send, db_path=self.db_path)

@@ -5,7 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import agent
+from agents import LLMOptions, task_parser
+
+
+def parse(instruction, client=None, model=None):
+    return task_parser.run(instruction, opts=LLMOptions(client=client, model=model))
 import scheduler
 import storage
 
@@ -52,7 +56,7 @@ class TestIntegration(unittest.TestCase):
             "missing_fields": [],
             "clarification_question": None,
         }
-        task = agent.parse_user_instruction(instruction, client=_FakeLLMClient(parsed), model="test")
+        task = parse(instruction, client=_FakeLLMClient(parsed), model="test")
         self.assertEqual(task["status"], "ready")
 
         stored_task = {

@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import schedule
 
-import scraper
+import pricing
 import scheduler
 import storage
 
@@ -120,14 +120,14 @@ class TestScheduler(unittest.TestCase):
     # R1 regression: scraping failure after a deal must not reset the event and send again.
     @patch.object(scheduler.config, "notification_max_retries", return_value=1)
     def test_scraper_failure_does_not_reset_deal_event(self, mock_retries):
-        class Boom(scraper.ScraperError):
+        class Boom(pricing.ObservationError):
             pass
 
         def fetcher_deal(url):
             return self._quote("299.00")
 
         def fetcher_fail(url):
-            raise scraper.ScraperError("network down")
+            raise pricing.ObservationError("network down")
 
         sent = []
         def send_fn(email, task, quote):

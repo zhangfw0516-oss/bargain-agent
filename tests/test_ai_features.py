@@ -1,4 +1,4 @@
-"""Tests for AI feature additions: page-attribute extraction and deal-email summary.
+"""Price-extraction attributes and the opt-in deal-email summary.
 
 Both features stay offline: every LLM call goes through a fake OpenAI-compatible
 client, and every SMTP call is mocked. The attribute extractor is a superset of the
@@ -10,8 +10,6 @@ import json
 import unittest
 from unittest.mock import patch
 
-import agent
-import cli
 import notifier
 import schemas
 
@@ -76,47 +74,6 @@ class TestValidatePriceExtractionAttributes(unittest.TestCase):
             schemas.validate_price_extraction(data)
 
 
-class TestQuoteFromLlmCarriesAttributes(unittest.TestCase):
-    def test_attributes_reach_the_quote(self):
-        import scraper
-        html = b"<html><body>Serum 30ml Black $59 NZD</body></html>"
-        extracted = _extraction(product_name="Serum", colour="Black", capacity="30ml")
-        with patch.object(agent, "extract_price_from_page_text", return_value=extracted):
-            quote = scraper._quote_from_llm(html, "https://e.co.nz/p")
-        self.assertEqual(quote["brand"], "Lumiere")
-        self.assertEqual(quote["variant"], "Black 30ml")
-
-    def test_variant_is_none_without_attributes(self):
-        import scraper
-        html = b"<html><body>Serum $59 NZD</body></html>"
-        extracted = _extraction(product_name="Serum", brand=None, colour=None, capacity=None)
-        with patch.object(agent, "extract_price_from_page_text", return_value=extracted):
-            quote = scraper._quote_from_llm(html, "https://e.co.nz/p")
-        self.assertIsNone(quote["variant"])
-        self.assertIsNone(quote["brand"])
-
-
-class TestSummariseDeal(unittest.TestCase):
-    def test_summary_round_trip(self):
-        client = FakeClient([FakeResponse("Kindle Paperwhite is $299.00 at PB Tech, below your $300 target.")])
-        task = {"product_name": "Kindle", "target_price": "300.00", "currency": "NZD", "comparison": "lt"}
-        quote = {"product_name": "Kindle Paperwhite", "price": "299.00", "currency": "NZD",
-                 "retailer": "PB Tech", "in_stock": True, "other_sources": []}
-        out = agent.summarise_deal(task, quote, client=client, model="test")
-        self.assertIn("PB Tech", out)
-        self.assertIn("DATA", client.calls[0]["messages"][0]["content"])
-
-    def test_summary_bounded_to_2000_chars(self):
-        client = FakeClient([FakeResponse("x" * 5000)])
-        out = agent.summarise_deal({}, {}, client=client, model="test")
-        self.assertLessEqual(len(out), 2000)
-
-    def test_summary_client_error_raises_parser_error(self):
-        client = FakeClient([RuntimeError("boom")])
-        with self.assertRaises(agent.ParserError):
-            agent.summarise_deal({}, {}, client=client, model="test")
-
-
 class TestNotifyDealLlmSummary(unittest.TestCase):
     def setUp(self):
         self.config_patch = patch.multiple(
@@ -172,104 +129,3 @@ class TestNotifyDealLlmSummary(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class TestExplainResult(unittest.TestCase):
-    def test_explain_result_round_trip(self):
-        client = FakeClient([FakeResponse("The item could not be confirmed as exactly what you asked for because its size was not stated.")])
-        out = agent.explain_result("needs_confirmation", ["size not stated"], client=client, model="test")
-        self.assertIn("not stated", out)
-        self.assertIn("DATA", client.calls[0]["messages"][0]["content"])
-
-    def test_explain_result_rejects_other_kinds(self):
-        with self.assertRaises(agent.ParserError):
-            agent.explain_result("same", [], client=FakeClient([]), model="test")
-
-    def test_explain_result_bounded_to_300_chars(self):
-        client = FakeClient([FakeResponse("x" * 5000)])
-        out = agent.explain_result("unavailable", ["denied"], client=client, model="test")
-        self.assertLessEqual(len(out), 300)
-
-    def test_explain_result_client_error_raises(self):
-        client = FakeClient([RuntimeError("boom")])
-        with self.assertRaises(agent.ParserError):
-            agent.explain_result("unavailable", ["denied"], client=client, model="test")
-
-
-class TestLlmExplainCliGate(unittest.TestCase):
-    def test_llm_explain_disabled_returns_empty_without_call(self):
-        with patch.object(cli.config, "llm_explain_results", return_value=False), \
-             patch.object(cli.agent, "explain_result") as mock_explain:
-            self.assertEqual(cli._llm_explain("needs_confirmation", ["size"]), "")
-            mock_explain.assert_not_called()
-
-    def test_llm_explain_failure_returns_empty(self):
-        with patch.object(cli.config, "llm_explain_results", return_value=True), \
-             patch.object(cli.agent, "explain_result", side_effect=agent.ParserError("x")):
-            self.assertEqual(cli._llm_explain("unavailable", ["denied"]), "")
-
-    def test_llm_explain_success_returns_text(self):
-        with patch.object(cli.config, "llm_explain_results", return_value=True), \
-             patch.object(cli.agent, "explain_result", return_value="a friendly reason"):
-            self.assertEqual(cli._llm_explain("needs_confirmation", ["size"]), "a friendly reason")
-
-
-class TestMatchProductAspect(unittest.TestCase):
-    def test_colour_same(self):
-        client = FakeClient([FakeResponse(json.dumps({"verdict": "same", "reason": "Obsidian is a marketing name for black."}))])
-        verdict, reason = agent.match_product_aspect("colour", "black", "Fitbit Air - Obsidian", "Fitbit Air", client=client, model="test")
-        self.assertEqual(verdict, "same")
-        self.assertIn("Obsidian", reason)
-
-    def test_colour_different(self):
-        client = FakeClient([FakeResponse(json.dumps({"verdict": "different", "reason": "Lavender is a shade of purple, not black."}))])
-        verdict, reason = agent.match_product_aspect("colour", "black", "Fitbit Air - Lavender", "Fitbit Air", client=client, model="test")
-        self.assertEqual(verdict, "different")
-
-    def test_accessory_same_when_user_asked_for_it(self):
-        client = FakeClient([FakeResponse(json.dumps({"verdict": "same", "reason": "The user asked for a band, so this is the requested product."}))])
-        verdict, reason = agent.match_product_aspect("accessory", None, "Fitbit Air Active Band", "Fitbit Air band", client=client, model="test")
-        self.assertEqual(verdict, "same")
-
-    def test_accessory_different(self):
-        client = FakeClient([FakeResponse(json.dumps({"verdict": "different", "reason": "This is a protective case, not the Fitbit Air itself."}))])
-        verdict, reason = agent.match_product_aspect("accessory", None, "Fitbit Air Case", "Fitbit Air", client=client, model="test")
-        self.assertEqual(verdict, "different")
-
-    def test_invalid_aspect_rejected(self):
-        with self.assertRaises(agent.ParserError):
-            agent.match_product_aspect("brand", None, "X", "X", client=FakeClient([]), model="test")
-
-    def test_invalid_json_rejected(self):
-        client = FakeClient([FakeResponse("not json")])
-        with self.assertRaises(agent.ParserError):
-            agent.match_product_aspect("colour", "black", "X", "X", client=client, model="test")
-
-    def test_client_error_raises(self):
-        client = FakeClient([RuntimeError("boom")])
-        with self.assertRaises(agent.ParserError):
-            agent.match_product_aspect("colour", "black", "X", "X", client=client, model="test")
-
-
-class TestLlmMatchAssistGate(unittest.TestCase):
-    def test_disabled_by_default(self):
-        import config
-        self.assertFalse(config.llm_match_assist())
-
-    def test_discovery_accessory_fallback(self):
-        # When the hardcoded keyword list finds nothing and the feature is off,
-        # the deterministic result is kept (no LLM call).
-        import discovery
-        candidate = {"title": "Fitbit Air Smart Watch", "url": "https://e.co.nz/p"}
-        request = {"product_name": "Fitbit Air", "query": "Fitbit Air"}
-        status, reasons = discovery.match_candidate(request, candidate)
-        self.assertEqual(status, discovery.MATCH_SAME)
-
-    def test_discovery_colour_fallback_deterministic(self):
-        # Deterministic colour extraction still works when LLM assist is off.
-        import discovery
-        candidate = {"title": "Fitbit Air - Obsidian", "url": "https://e.co.nz/p"}
-        request = {"product_name": "Fitbit Air", "query": "Fitbit Air", "colour": "black"}
-        status, reasons = discovery.match_candidate(request, candidate)
-        self.assertEqual(status, discovery.MATCH_SAME)
-

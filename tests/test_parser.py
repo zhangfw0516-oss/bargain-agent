@@ -1,10 +1,14 @@
-"""Tests for agent.parse_user_instruction."""
+"""Tests for the task-parser agent."""
 
 import json
 import unittest
 from typing import Any
 
-import agent
+from agents import LLMOptions, task_parser
+
+
+def parse(instruction, client=None, model=None):
+    return task_parser.run(instruction, opts=LLMOptions(client=client, model=model))
 
 
 class FakeChoice:
@@ -50,17 +54,17 @@ class TestParseUserInstruction(unittest.TestCase):
         }
 
     def test_empty_instruction(self):
-        with self.assertRaises(agent.ParserError):
-            agent.parse_user_instruction("   ", client=FakeClient([]), model="test")
+        with self.assertRaises(task_parser.TaskParseError):
+            parse("   ", client=FakeClient([]), model="test")
 
     def test_long_instruction(self):
-        with self.assertRaises(agent.ParserError):
-            agent.parse_user_instruction("x" * 8001, client=FakeClient([]), model="test")
+        with self.assertRaises(task_parser.TaskParseError):
+            parse("x" * 8001, client=FakeClient([]), model="test")
 
     def test_ready_task(self):
         payload = self._ready_task()
         client = FakeClient([FakeResponse(json.dumps(payload))])
-        result = agent.parse_user_instruction(
+        result = parse(
             f"Monitor {payload['url']} and notify me when below NZD 300",
             client=client,
             model="test-model",
@@ -84,7 +88,7 @@ class TestParseUserInstruction(unittest.TestCase):
             "clarification_question": "请提供商品链接，并告诉我多久检查一次？",
         }
         client = FakeClient([FakeResponse(json.dumps(payload))])
-        result = agent.parse_user_instruction(
+        result = parse(
             "帮我监控全新 iPhone，不超过 NZD 900",
             client=client,
             model="test",
@@ -107,7 +111,7 @@ class TestParseUserInstruction(unittest.TestCase):
             "clarification_question": "目前不支持监控多个商品或跨平台比价。",
         }
         client = FakeClient([FakeResponse(json.dumps(payload))])
-        result = agent.parse_user_instruction(
+        result = parse(
             "帮我找全网最低价的耳机",
             client=client,
             model="test",
@@ -116,8 +120,8 @@ class TestParseUserInstruction(unittest.TestCase):
 
     def test_invalid_response_raises(self):
         client = FakeClient([FakeResponse('{"bad": "json"}')])
-        with self.assertRaises(agent.ParserError):
-            agent.parse_user_instruction(
+        with self.assertRaises(task_parser.TaskParseError):
+            parse(
                 "Monitor https://www.pbtech.co.nz/x when below NZD 100",
                 client=client,
                 model="test",
@@ -125,8 +129,8 @@ class TestParseUserInstruction(unittest.TestCase):
 
     def test_incomplete_finish_reason(self):
         client = FakeClient([FakeResponse(json.dumps(self._ready_task()), finish_reason="length")])
-        with self.assertRaises(agent.ParserError):
-            agent.parse_user_instruction(
+        with self.assertRaises(task_parser.TaskParseError):
+            parse(
                 "Monitor https://www.pbtech.co.nz/x when below NZD 100",
                 client=client,
                 model="test",
@@ -134,8 +138,8 @@ class TestParseUserInstruction(unittest.TestCase):
 
     def test_model_exception(self):
         client = FakeClient([RuntimeError("network down")])
-        with self.assertRaises(agent.ParserError):
-            agent.parse_user_instruction(
+        with self.assertRaises(task_parser.TaskParseError):
+            parse(
                 "Monitor https://www.pbtech.co.nz/x when below NZD 100",
                 client=client,
                 model="test",
@@ -177,7 +181,7 @@ class TestParseUserInstruction(unittest.TestCase):
                 expected = dict(base)
                 expected.update(sample["overrides"])
                 client = FakeClient([FakeResponse(json.dumps(expected))])
-                result = agent.parse_user_instruction(sample["instruction"], client=client, model="test")
+                result = parse(sample["instruction"], client=client, model="test")
                 for key, value in sample["overrides"].items():
                     self.assertEqual(result[key], value)
 
@@ -185,8 +189,8 @@ class TestParseUserInstruction(unittest.TestCase):
     def test_reject_hallucinated_url(self):
         payload = self._ready_task(url="https://www.pbtech.co.nz/hallucinated")
         client = FakeClient([FakeResponse(json.dumps(payload))])
-        with self.assertRaises(agent.ParserError):
-            agent.parse_user_instruction(
+        with self.assertRaises(task_parser.TaskParseError):
+            parse(
                 "Monitor https://www.pbtech.co.nz/real when below NZD 300",
                 client=client,
                 model="test",
@@ -196,8 +200,8 @@ class TestParseUserInstruction(unittest.TestCase):
     def test_reject_nonpositive_price(self):
         payload = {**self._ready_task(), "target_price": "0.00"}
         client = FakeClient([FakeResponse(json.dumps(payload))])
-        with self.assertRaises(agent.ParserError):
-            agent.parse_user_instruction(
+        with self.assertRaises(task_parser.TaskParseError):
+            parse(
                 "Monitor https://www.pbtech.co.nz/x when below NZD 0",
                 client=client,
                 model="test",
@@ -207,7 +211,7 @@ class TestParseUserInstruction(unittest.TestCase):
     def test_reject_missing_frequency(self):
         payload = {**self._ready_task(url="https://www.pbtech.co.nz/x"), "frequency_minutes": None}
         client = FakeClient([FakeResponse(json.dumps(payload))])
-        result = agent.parse_user_instruction(
+        result = parse(
             "Monitor https://www.pbtech.co.nz/x when below NZD 300",
             client=client,
             model="test",

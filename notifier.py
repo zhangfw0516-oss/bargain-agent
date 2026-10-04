@@ -172,15 +172,11 @@ def build_deal_body(task: dict[str, Any], quote: dict[str, Any]) -> str:
 
 def _llm_deal_body(task: dict[str, Any], quote: dict[str, Any]) -> str | None:
     """Best-effort LLM summary; returns None (caller falls back) on any failure."""
+    from agents import deal_summary
+
     try:
-        from agent import ParserError, summarise_deal
-    except ImportError:
-        return None
-    try:
-        summary = summarise_deal(task, quote)
-    except ParserError:
-        return None
-    except Exception:
+        summary = deal_summary.run(task, quote)
+    except Exception:  # noqa: BLE001 - a summary must never block the alert
         return None
     if not summary or not summary.strip():
         return None

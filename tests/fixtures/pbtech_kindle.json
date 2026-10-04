@@ -1,8 +1,0 @@
-{
-  "_meta": {
-    "source": "pbtech.co.nz",
-    "captured_at": "2026-09-23T04:38:00+00:00",
-    "notes": "Fixture price for offline testing; not a live price."
-  },
-  "html": "<!DOCTYPE html><html><head><title>Kindle Paperwhite 16GB</title><script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"Product\",\"name\":\"Kindle Paperwhite 16GB\",\"offers\":{\"@type\":\"Offer\",\"price\":\"319.00\",\"priceCurrency\":\"NZD\",\"availability\":\"https://schema.org/InStock\"}}</script></head><body></body></html>"
-}

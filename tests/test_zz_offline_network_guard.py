@@ -1,9 +1,8 @@
 """Process-wide offline seal for the whole test suite.
 
-The suite is meant to be fully offline. A few modules legitimately exercise the
-*default* web-provider path by replacing ``brave._default_sender`` with a fake; every
-other module injects its own provider / fetch / sender. This module arms a recorder on
-each real outbound boundary for the whole run and fails if anything reached one.
+The suite is meant to be fully offline: every test injects its own provider sender,
+LLM client, observer and notifier. This module arms a recorder on each real outbound
+boundary for the whole run and fails if anything reached one.
 
 Because ``unittest discover`` imports every test module **before** running any test, a
 single import-time patch covers the entire suite. The module is named ``test_zz_*`` so
@@ -15,12 +14,12 @@ Sealed boundaries (the full current egress surface):
   ``socket.create_connection`` for any **non-loopback** host. The loopback is left
   open because the Stage D web suite runs a real HTTP server on ``127.0.0.1``; every
   other hostname or public IP is refused before a packet leaves.
-- merchant / product-page detail fetch — ``requests.Session`` (built by ``scraper``)
+- ``requests.Session``
 - module-level HTTP verbs             — ``requests.get`` / ``requests.post`` /
-  ``requests.request`` (``search_providers.brave._default_sender`` uses ``requests.get``)
-- Brave web search                     — ``search_providers.brave._default_sender``
+  ``requests.request`` (the LLM client posts; provider senders use ``request``)
+- SerpApi / Tavily / Firecrawl         — ``sources.base.default_sender``
 - SMTP notification                    — ``smtplib.SMTP`` / ``smtplib.SMTP_SSL``
-- DeepSeek / OpenAI-compatible client  — ``openai.OpenAI``
+- OpenAI SDK, if installed             — ``openai.OpenAI``
 
 A regression that reaches any of these is recorded and raised here, so a real key in
 ``.env`` can never turn an offline run into a live one unnoticed. The recorded label is
@@ -34,7 +33,7 @@ import unittest
 
 import requests
 
-import search_providers.brave as brave
+import sources.base as provider_base
 
 
 class OfflineNetworkViolation(AssertionError):
@@ -118,15 +117,15 @@ def _sealed_http_verb(verb: str):
     return _blocked
 
 
-_BRAVE_SEAL = _record("search_providers.brave._default_sender (Brave)")
-_REQUESTS_SESSION_SEAL = _record("requests.Session (scraper detail fetch)")
+_PROVIDER_SEAL = _record("sources.base.default_sender (SerpApi/Tavily/Firecrawl)")
+_REQUESTS_SESSION_SEAL = _record("requests.Session")
 _REQUESTS_GET_SEAL = _sealed_http_verb("get")
 _REQUESTS_POST_SEAL = _sealed_http_verb("post")
 _REQUESTS_REQUEST_SEAL = _sealed_http_verb("request")
 _SMTP_SEAL = _record("smtplib.SMTP")
 _SMTP_SSL_SEAL = _record("smtplib.SMTP_SSL")
 
-brave._default_sender = _BRAVE_SEAL
+provider_base.default_sender = _PROVIDER_SEAL
 requests.Session = _REQUESTS_SESSION_SEAL
 requests.get = _REQUESTS_GET_SEAL
 requests.post = _REQUESTS_POST_SEAL
@@ -141,7 +140,7 @@ try:  # optional dependency: sealed only when importable
 except ImportError:  # pragma: no cover
     _OPENAI_SEAL = None
 else:
-    _OPENAI_SEAL = _record("openai.OpenAI (DeepSeek client)")
+    _OPENAI_SEAL = _record("openai.OpenAI")
     openai.OpenAI = _OPENAI_SEAL
 
 
@@ -176,7 +175,7 @@ class TestSuiteStaysOffline(unittest.TestCase):
     def test_the_seals_are_still_armed(self):
         # If a test leaked a patch and left a real function installed, the record
         # above would be blind — so assert the seals themselves are intact.
-        self.assertIs(brave._default_sender, _BRAVE_SEAL)
+        self.assertIs(provider_base.default_sender, _PROVIDER_SEAL)
         self.assertIs(requests.Session, _REQUESTS_SESSION_SEAL)
         self.assertIs(requests.get, _REQUESTS_GET_SEAL)
         self.assertIs(requests.post, _REQUESTS_POST_SEAL)
