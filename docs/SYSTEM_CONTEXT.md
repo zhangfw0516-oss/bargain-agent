@@ -7,6 +7,7 @@ flowchart LR
     App -->|google_shopping, product offers| Serp[(SerpApi)]
     App -->|extract| Tavily[(Tavily)]
     App -->|search, scrape| Fire[(Firecrawl)]
+    App -->|fetch page| ScrapeDo[(Scrape.do)]
     App -->|SMTP TLS/SSL| Mail[(Mail server)] --> Inbox((Recipient))
     App --- DB[(SQLite file)]
 ```
@@ -17,7 +18,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | LLM | prompt + structured input (descriptions, evidence summaries without links/tokens, page text) | JSON validated locally | retry once with the error, then deterministic fallback |
 | SerpApi | search query / product id / page token, NZ locale, API key (query string) | listings and seller offers with prices | typed errors; daily local cap; never logged with the key |
-| Tavily / Firecrawl | one public product URL (screened by `is_safe_public_url`), Bearer key | page text or schema-validated price | next extractor in the chain; recorded as a source error |
+| Tavily / Firecrawl / Scrape.do | one public product URL (screened by `is_safe_public_url`), Bearer key | page text or schema-validated price | next extractor in the chain; recorded as a source error |
 | SMTP | one alert per deal episode | accepted / error | scheduler-owned attempt budget; permits prevent duplicates |
 
 ## Trust and safety rules

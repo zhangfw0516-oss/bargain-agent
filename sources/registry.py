@@ -14,6 +14,7 @@ import config
 from sources.base import OfferSource, PageExtractor, ShoppingSearch
 from sources.firecrawl import Firecrawl
 from sources.serpapi import SerpApi
+from sources.scrapedo import ScrapeDo
 from sources.tavily import TavilyExtract
 
 #: Called with a provider name before each billable call; raises QuotaExceeded.
@@ -52,7 +53,8 @@ def build_providers(before_call: QuotaGuard | None = None) -> Providers:
     else:
         providers.unavailable["firecrawl"] = "missing FIRECRAWL_API_KEY"
 
-    candidates = {"tavily": TavilyExtract(before_call=before_call), "firecrawl": firecrawl}
+    candidates = {"tavily": TavilyExtract(before_call=before_call), "firecrawl": firecrawl,
+                  "scrapedo": ScrapeDo(before_call=before_call)}
     for name in config.page_extractors():
         extractor = candidates[name]
         if extractor.is_configured():

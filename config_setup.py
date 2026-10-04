@@ -33,7 +33,7 @@ SMTP_KEYS = ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS")
 LLM_KEYS = ("LLM_API_KEY", "LLM_API_BASE_URL", "LLM_MODEL")
 
 #: Page extractors for pasted URLs; at least one is needed for URL sources.
-EXTRACTOR_KEYS = ("TAVILY_API_KEY", "FIRECRAWL_API_KEY")
+EXTRACTOR_KEYS = ("TAVILY_API_KEY", "FIRECRAWL_API_KEY", "SCRAPEDO_API_KEY")
 
 #: Test/hermetic override: when this environment variable is set, all setup
 #: I/O stays inside the given file and the process environment is never

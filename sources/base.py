@@ -157,7 +157,7 @@ def default_sender(method: str, url: str, *, params=None, json=None, headers=Non
         response.close()
 
 
-def request_json(
+def request_raw(
     provider: str,
     method: str,
     url: str,
@@ -167,8 +167,8 @@ def request_json(
     payload: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     timeout: float = 20.0,
-) -> Any:
-    """Send one request and return parsed JSON, mapping failures to provider errors."""
+) -> bytes:
+    """Send one request and return the 200 body, mapping failures to provider errors."""
     do_send = sender or default_sender
     try:
         status, body = do_send(method, url, params=params, json=payload, headers=headers, timeout=timeout)
@@ -184,15 +184,37 @@ def request_json(
         raise AuthError(f"{provider} rejected the credentials (HTTP {status}).")
     if status in (402, 429):
         raise RateLimited(f"{provider} quota exhausted or throttled (HTTP {status}).")
-    try:
-        data = json.loads(bytes(body).decode("utf-8")) if body else None
-    except (ValueError, UnicodeDecodeError):
-        data = None
     if status != 200:
         raise Unavailable(f"{provider} request failed (HTTP {status}).")
-    if data is None:
-        raise Unavailable(f"{provider} returned a response that is not valid JSON.")
-    return data
+    return bytes(body)
+
+
+def request_json(provider: str, method: str, url: str, **kwargs: Any) -> Any:
+    """Like :func:`request_raw`, returning parsed JSON. Error bodies stay unread."""
+    do_send = kwargs.pop("sender", None) or default_sender
+    captured: dict[str, Any] = {}
+
+    def keep_body(*args: Any, **kw: Any) -> tuple[int, bytes]:
+        status, body = do_send(*args, **kw)
+        captured["status"], captured["body"] = status, body
+        return status, body
+
+    try:
+        body = request_raw(provider, method, url, sender=keep_body, **kwargs)
+    except Unavailable:
+        # SerpApi reports some outcomes (e.g. no results) as JSON errors on non-200.
+        if captured.get("status") in (400, 404) and isinstance(captured.get("body"), (bytes, bytearray)):
+            try:
+                data = json.loads(bytes(captured["body"]).decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                data = None
+            if isinstance(data, dict) and data.get("error"):
+                return data
+        raise
+    try:
+        return json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        raise Unavailable(f"{provider} returned a response that is not valid JSON.") from None
 
 
 # --- Shared parsing helpers ---------------------------------------------------

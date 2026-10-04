@@ -213,12 +213,20 @@ def firecrawl_timeout() -> float:
     return _finite_positive_float(_get("FIRECRAWL_TIMEOUT"), "30.0", "FIRECRAWL_TIMEOUT")
 
 
-PAGE_EXTRACTOR_NAMES = ("tavily", "firecrawl")
+def scrapedo_api_key() -> str:
+    return _get("SCRAPEDO_API_KEY")
+
+
+def scrapedo_timeout() -> float:
+    return _finite_positive_float(_get("SCRAPEDO_TIMEOUT"), "60.0", "SCRAPEDO_TIMEOUT")
+
+
+PAGE_EXTRACTOR_NAMES = ("firecrawl", "tavily", "scrapedo")
 
 
 def page_extractors() -> list[str]:
     """Ordered fallback chain for reading a product page (``PAGE_EXTRACTORS``)."""
-    names = [n.lower() for n in _csv("PAGE_EXTRACTORS")] or ["tavily", "firecrawl"]
+    names = [n.lower() for n in _csv("PAGE_EXTRACTORS")] or list(PAGE_EXTRACTOR_NAMES)
     unknown = [n for n in names if n not in PAGE_EXTRACTOR_NAMES]
     if unknown:
         raise ConfigError(f"Unknown PAGE_EXTRACTORS: {', '.join(unknown)}")

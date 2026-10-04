@@ -238,6 +238,46 @@ class TestFirecrawl(unittest.TestCase):
             Firecrawl("fc", sender=sender, timeout=5).extract("https://shop.example.nz/kindle")
 
 
+class TestScrapeDo(unittest.TestCase):
+    TOKEN = "scrapedo-secret-token"
+
+    def html(self):
+        from tests.fakes import FIXTURES
+
+        return FIXTURES.joinpath("scrapedo", "product_page.html").read_bytes()
+
+    def test_extract_returns_structured_data_and_visible_text(self):
+        from sources.scrapedo import ScrapeDo
+
+        sender = FakeSender(self.html())
+        page = ScrapeDo(self.TOKEN, sender=sender, timeout=5).extract("https://shop.example.nz/fitbit")
+        self.assertEqual(sender.calls[0]["params"], {"token": self.TOKEN, "url": "https://shop.example.nz/fitbit", "geoCode": "nz"})
+        self.assertTrue(page.text.startswith("Structured data:"))
+        self.assertIn('"price":"198.00"', page.text)
+        self.assertIn("$198.00 inc GST", page.text)
+        self.assertNotIn("window.tracking", page.text)
+        self.assertNotIn("Enable JavaScript", page.text)
+        self.assertIn("In stock & ready to ship", page.text)
+        self.assertEqual(page.title, "Buy the Fitbit Charge 6 - Example Shop")
+
+    def test_errors_never_leak_the_token(self):
+        from sources.scrapedo import ScrapeDo
+
+        leak = requests.exceptions.ConnectionError(f"https://api.scrape.do/?token={self.TOKEN}")
+        for response, exc in ((leak, base.Unavailable), ((401, b"no"), base.AuthError), ((502, b"bad"), base.Unavailable)):
+            with self.assertRaises(exc) as ctx:
+                ScrapeDo(self.TOKEN, sender=FakeSender(response), timeout=5).extract("https://shop.example.nz/x")
+            self.assertNotIn(self.TOKEN, str(ctx.exception))
+
+    def test_not_configured_and_bad_urls(self):
+        from sources.scrapedo import ScrapeDo
+
+        with self.assertRaises(base.NotConfigured):
+            ScrapeDo("", sender=FakeSender(), timeout=5).extract("https://shop.example.nz/x")
+        with self.assertRaises(ValueError):
+            ScrapeDo("t", sender=FakeSender(), timeout=5).extract("ftp://shop.example.nz/x")
+
+
 class TestRegistry(unittest.TestCase):
     def test_missing_keys_are_reported_unavailable(self):
         with patch("config.serpapi_api_key", return_value=""), patch("config.firecrawl_api_key", return_value=""), \
@@ -250,11 +290,12 @@ class TestRegistry(unittest.TestCase):
 
     def test_all_configured(self):
         with patch("config.serpapi_api_key", return_value="s"), patch("config.firecrawl_api_key", return_value="f"), \
-                patch("config.tavily_api_key", return_value="t"), patch("config.page_extractors", return_value=["firecrawl", "tavily"]):
+                patch("config.tavily_api_key", return_value="t"), patch("config.scrapedo_api_key", return_value="d"), \
+                patch("config.page_extractors", return_value=["firecrawl", "scrapedo", "tavily"]):
             providers = build_providers()
         self.assertEqual(providers.shopping.name, "serpapi")
         self.assertEqual(providers.supplement.name, "firecrawl")
-        self.assertEqual([p.name for p in providers.extractors], ["firecrawl", "tavily"])
+        self.assertEqual([p.name for p in providers.extractors], ["firecrawl", "scrapedo", "tavily"])
 
 
 if __name__ == "__main__":

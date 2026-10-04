@@ -26,7 +26,7 @@ flowchart LR
 
 - **Find** is a LangGraph pipeline of AI agents (`pipeline.py`, `agents/`). Search itself is code: SerpApi Google Shopping returns structured listings with prices, so retailer sites are not scraped. Firecrawl adds candidates only when Google returns too few, and their prices must be read from the page by the price-extractor agent.
 - **Agents choose, code decides.** Agents may only pick server-assigned evidence ids; every model output is validated; budget/condition vetoes, deal thresholds, deduplication and send permits are deterministic. Every agent falls back to plain code when the model is unavailable.
-- **Monitoring** re-lists every seller of the confirmed Google product on each check (multi-merchant comparison for one SerpApi call). A pasted product URL is read through Tavily/Firecrawl and the price-extractor agent.
+- **Monitoring** re-lists every seller of the confirmed Google product on each check (multi-merchant comparison for one SerpApi call). A pasted product URL is read through Firecrawl, Tavily or Scrape.do (fallback chain) and the price-extractor agent.
 - **All merchants are shown; trusted merchants trigger alerts** (`TRUSTED_MERCHANTS`, `ALERT_TRUSTED_ONLY`). Second-hand offers are rejected unless requested, and the offer-verifier agent can veto wrong models and bundles.
 - **Cost guards:** `SERPAPI_DAILY_MAX_CALLS`, `FIND_MAX_QUERIES`, `MONITOR_MIN_FREQUENCY_MINUTES`.
 
@@ -72,7 +72,7 @@ pipeline.py        LangGraph Find pipeline (understand → rewrite → search �
 agents/            AI agents: understand, rewrite, select, describe, task_parser,
                    price_extractor, offer_verifier, deal_summary
 llm.py             Single validated LLM entry point (call_json), per-agent model config
-sources/           Providers behind protocols: serpapi, tavily, firecrawl, registry
+sources/           Providers behind protocols: serpapi, firecrawl, tavily, scrapedo, registry
 pricing.py         Source observation, quota guard, merchant trust, URL safety
 scheduler.py       Checks, identity verdicts, deal decision, send permits, dedup
 storage.py         SQLite schema (PRAGMA user_version) and persistence

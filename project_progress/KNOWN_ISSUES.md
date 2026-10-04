@@ -2,16 +2,20 @@
 
 Current as of 2026-10-04 (refactor branch `refactor/serpapi-ai-pipeline`). The pre-refactor list is in `archive/project_progress/KNOWN_ISSUES.md`.
 
-## Needs live verification
+## Live verification (2026-10-04)
 
-- **SerpApi response shapes are unverified.** `tests/fixtures/serpapi/*.json` were written from SerpApi documentation, not recorded. Before relying on monitoring, run one `google_shopping`, one `google_immersive_product` and one `google_product` request for an NZ product, scrub the key, replace the fixtures and fix any parser drift in `sources/serpapi.py`.
-- **Which offers endpoint works for NZ** (`google_immersive_product` by page token vs `google_product` by id) is not confirmed; `SerpApi.offers` tries both and re-searches by product id.
-- **Tavily Extract and Firecrawl request/response shapes** (`/extract`, `/v1/search`, `/v1/scrape` with `formats: ["json"]`) are also documented-not-recorded.
-- **Prompts for the new agents** (`understand`, `rewrite`, `select`, `describe`, `verify_offers`) have only been exercised with replayed answers. Run `python -m evaluation --live` and a few real Find runs.
+Verified with real calls (scrubbed recordings in `tests/fixtures/serpapi/*recorded*`, `tests/fixtures/firecrawl/*recorded*`):
+
+- SerpApi `google_shopping` (gl=nz) and `google_immersive_product` work; **`google_product` is retired by Google** and is no longer used.
+- Most Shopping results are single-seller listings; the immersive page for them lists one store, so "all sellers" is often one or a few.
+- Firecrawl search and JSON scrape work. Its extractor first returned the **ex-GST** price on a PB Tech page; both prompts now ask for the tax-inclusive price and returned NZ$198.00.
+- Scrape.do fetch works; text + JSON-LD through the price agent returned NZ$198.00.
+
+Still unverified: Tavily Extract (no current key tested), the understand/rewrite/select/describe/verify prompts on real model output (run `python -m evaluation --live` and real Find runs).
 
 ## Behaviour to be aware of
 
-- Google Shopping offers carry no stock field; an offer is treated as in stock unless its details say out of stock / sold out.
+- Google Shopping offers carry no stock field (stores say e.g. "In stock online"); an offer is treated as in stock unless its details say out of stock / sold out.
 - A bare `$` is read as NZD only in Google Shopping results for `gl=nz`; on product pages a bare `$` without a stated currency is not a usable price.
 - With `ALERT_TRUSTED_ONLY=true`, a product source whose only sellers are unverified never alerts and never resets its episode.
 - Product tasks check at most every `MONITOR_MIN_FREQUENCY_MINUTES` (default 360) to protect the SerpApi quota; existing tasks keep their stored frequency but the floor applies when the next check is scheduled.
