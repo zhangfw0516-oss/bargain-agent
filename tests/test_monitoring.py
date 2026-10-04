@@ -301,5 +301,78 @@ class TestMultiSellerCheck(DbCase):
         self.assertGreater((next_check - datetime.now(timezone.utc)).total_seconds(), 359 * 60)
 
 
+class FakeShopping:
+    name = "serper"
+
+    def __init__(self, *responses):
+        self.responses = list(responses)
+        self.queries = []
+
+    def search(self, query, *, limit=20):
+        self.queries.append(query)
+        value = self.responses.pop(0) if self.responses else []
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+
+def listing(pid, merchant, price):
+    from sources.base import ShoppingResult
+
+    return ShoppingResult(title="Fitbit Charge 6", link=f"https://g.example/{pid}", provider="serper",
+                          merchant=merchant, price=price, currency="NZD", product_id=pid)
+
+
+class TestSharedSearchMonitoring(DbCase):
+    def multi_task(self, target="215.00", tokens=(None, None, None)):
+        task = {"product_name": "Fitbit Charge 6", "url": PRODUCT_URL, "target_price": target, "currency": "NZD",
+                "comparison": "lte", "frequency_minutes": 1440, "notify_email": "u@example.com"}
+        sources = [
+            {"url": f"https://g.example/{pid}", "retailer": m, "source_kind": storage.SOURCE_SERPAPI, "product_id": pid,
+             "page_token": tok, "search_query": "Fitbit Charge 6"}
+            for (pid, m), tok in zip((("a", "Harvey Norman"), ("b", "PB Tech"), ("c", "JB Hi-Fi")), tokens)
+        ]
+        tid = storage.create_task_with_sources(task, sources, db_path=self.db)
+        return storage.get_task(tid, db_path=self.db)
+
+    def observer_for(self, prov):
+        context = pricing.CheckContext()
+        return lambda source, task: pricing.observe_source(source, task, providers=prov, db_path=self.db, context=context)
+
+    def test_one_search_per_check_for_all_merchants(self):
+        task = self.multi_task()
+        shopping = FakeShopping([listing("a", "Harvey Norman New Zealand", "220.00"), listing("b", "PB Tech", "198.00"),
+                                 listing("c", "JB Hi-Fi", "219.00"), listing("z", "Other", "100.00")])
+        prov = SimpleNamespace(shopping=shopping, detail=None, offers=None, extractors=[])
+        result, sent = self.check(task, self.observer_for(prov))
+        self.assertEqual(shopping.queries, ["Fitbit Charge 6"])
+        self.assertEqual(result["sources_checked"], 3)
+        self.assertEqual((result["chosen_retailer"], result["chosen_price"]), ("PB Tech", "198.00"))
+        self.assertEqual(len(sent), 1)
+
+    def test_missing_listings_use_at_most_two_detail_lookups(self):
+        task = self.multi_task(tokens=("ta", "tb", "tc"))
+        shopping = FakeShopping([listing("z", "Other", "100.00")])
+        detail = FakeOffers([offer("Harvey Norman", "220.00")], [offer("PB Tech", "199.00")], [offer("JB Hi-Fi", "1.00")])
+        prov = SimpleNamespace(shopping=shopping, detail=detail, offers=None, extractors=[])
+        result, _ = self.check(task, self.observer_for(prov))
+        self.assertEqual(len(detail.refs), 2)
+        self.assertEqual(result["sources_failed"], 1)
+        errors = [s["last_error"] for s in storage.list_task_sources(task["id"], db_path=self.db)]
+        self.assertIn("did not appear", errors[2])
+
+    def test_search_failure_is_a_source_error_not_a_reset(self):
+        task = self.multi_task(target="300.00")
+        ok = FakeShopping([listing("a", "Harvey Norman New Zealand", "220.00"), listing("b", "PB Tech", "198.00"),
+                           listing("c", "JB Hi-Fi", "219.00")])
+        self.check(task, self.observer_for(SimpleNamespace(shopping=ok, detail=None, offers=None, extractors=[])))
+        failing = FakeShopping(RateLimited("Serper quota"))
+        prov = SimpleNamespace(shopping=failing, detail=None, offers=None, extractors=[])
+        result, sent = self.check(task, self.observer_for(prov))
+        self.assertEqual(failing.queries, ["Fitbit Charge 6"])
+        self.assertEqual(result["sources_failed"], 3)
+        self.assertEqual(result["event_reset_reason"], "not_all_sources_comparable")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -22,7 +22,7 @@ import config
 import storage
 from agents import LLMOptions
 from agents import price_extractor
-from sources.base import PageText, ProductRef, ProviderError, QuotaExceeded
+from sources.base import PageText, ProductRef, ProviderError, QuotaExceeded, listing_offer
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,29 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+#: SerpApi detail lookups allowed per check for listings missing from the shared search.
+MAX_DETAIL_LOOKUPS_PER_CHECK = 2
+
+
+class CheckContext:
+    """Per-check state: one shared search per query, a cap on detail lookups."""
+
+    def __init__(self, max_detail_lookups: int = MAX_DETAIL_LOOKUPS_PER_CHECK):
+        self.searches: dict[str, Any] = {}
+        self.detail_left = max_detail_lookups
+
+    def search(self, providers: Any, query: str) -> list:
+        if query not in self.searches:
+            try:
+                self.searches[query] = providers.shopping.search(query, limit=40)
+            except ProviderError as exc:
+                self.searches[query] = exc
+        found = self.searches[query]
+        if isinstance(found, ProviderError):
+            raise found
+        return found
+
+
 def observe_source(
     source: dict[str, Any],
     task: dict[str, Any],
@@ -56,49 +79,83 @@ def observe_source(
     providers: Any,
     db_path: Path | None = None,
     llm_opts: LLMOptions | None = None,
+    context: CheckContext | None = None,
 ) -> list[dict[str, Any]]:
     """Quotes for one source. Raises :class:`ObservationError` when nothing usable came back."""
     kind = source.get("source_kind") or storage.SOURCE_URL
     if kind == storage.SOURCE_SERPAPI:
-        return _observe_product(source, task, providers=providers, db_path=db_path)
+        return _observe_product(source, task, providers=providers, db_path=db_path, context=context or CheckContext())
     return [_observe_page(source, task, providers=providers, llm_opts=llm_opts)]
 
 
-def _observe_product(source, task, *, providers, db_path) -> list[dict[str, Any]]:
-    if providers.offers is None:
-        raise ObservationError("Google Shopping offers are unavailable (SERPAPI_API_KEY not set).")
+def _quote(offer, task, source, fetched_at) -> dict[str, Any]:
+    return {
+        "product_name": offer.title or task.get("product_name"),
+        "retailer": offer.merchant,
+        "url": offer.link or source["url"],
+        "price": offer.price,
+        "currency": offer.currency,
+        "in_stock": offer.in_stock,
+        "condition": offer.condition,
+        "fetched_at": fetched_at,
+        "trusted": merchant_trust(offer.merchant, offer.link),
+        "error": None,
+    }
+
+
+def _observe_product(source, task, *, providers, db_path, context: CheckContext) -> list[dict[str, Any]]:
+    """Google Shopping product source.
+
+    1. The task's sources share one search per check (cached in ``context``); the
+       listing with this source's ``product_id`` is the merchant's current offer.
+    2. A listing missing from that search is looked up on its SerpApi product page
+       (stores, shipping) — at most ``MAX_DETAIL_LOOKUPS_PER_CHECK`` per check.
+    3. Without a shared search (legacy rows), the offers provider is asked directly.
+    """
     ref = ProductRef(source.get("product_id"), source.get("page_token"), source.get("search_query"), task.get("product_name"))
-    try:
-        offers, fresh = providers.offers.offers(ref)
-    except ProviderError as exc:
-        raise ObservationError(str(exc)) from None
-    if fresh.page_token and fresh.page_token != ref.page_token:
-        storage.update_source_ref(source["id"], page_token=fresh.page_token, db_path=db_path)
+    shopping = getattr(providers, "shopping", None)
+    detail = getattr(providers, "detail", None)
+    offers: list = []
+    error: str | None = None
+    searched = False
+    if shopping is not None and ref.search_query and ref.product_id:
+        searched = True
+        try:
+            results = context.search(providers, ref.search_query)
+            match = next((r for r in results if r.product_id == ref.product_id), None)
+            offer = listing_offer(match) if match else None
+            offers = [offer] if offer else []
+        except ProviderError as exc:
+            error = str(exc)
+    if not offers and detail is not None and ref.page_token and context.detail_left > 0:
+        context.detail_left -= 1
+        try:
+            offers, fresh = detail.offers(ProductRef(ref.product_id, ref.page_token, None, ref.title))
+            if fresh.page_token and fresh.page_token != ref.page_token:
+                storage.update_source_ref(source["id"], page_token=fresh.page_token, db_path=db_path)
+        except ProviderError as exc:
+            error = str(exc)
+    if not offers and not searched:
+        offers_provider = getattr(providers, "offers", None)
+        if offers_provider is None:
+            raise ObservationError("Google Shopping is unavailable (set SERPER_API_KEY or SERPAPI_API_KEY).")
+        try:
+            offers, fresh = offers_provider.offers(ref)
+        except ProviderError as exc:
+            raise ObservationError(str(exc)) from None
+        if fresh.page_token and fresh.page_token != ref.page_token:
+            storage.update_source_ref(source["id"], page_token=fresh.page_token, db_path=db_path)
+    if error and not offers:
+        raise ObservationError(error)
     empty_count = storage.record_source_empty(source["id"], not offers, db_path=db_path)
     if not offers:
         if empty_count >= EMPTY_CHECKS_BEFORE_WARNING:
             raise ObservationError(
-                f"No sellers listed for {empty_count} checks in a row; the product may have been removed. Run Find again."
+                f"Not listed for {empty_count} checks in a row; the product may have been removed. Run Find again."
             )
-        raise ObservationError("Google Shopping listed no sellers for this product right now.")
+        raise ObservationError("This merchant's listing did not appear in Google Shopping this check.")
     fetched_at = _now()
-    quotes = []
-    for offer in offers[: config.monitor_max_offers()]:
-        quotes.append(
-            {
-                "product_name": offer.title or task.get("product_name"),
-                "retailer": offer.merchant,
-                "url": offer.link or source["url"],
-                "price": offer.price,
-                "currency": offer.currency,
-                "in_stock": offer.in_stock,
-                "condition": offer.condition,
-                "fetched_at": fetched_at,
-                "trusted": merchant_trust(offer.merchant, offer.link),
-                "error": None,
-            }
-        )
-    return quotes
+    return [_quote(offer, task, source, fetched_at) for offer in offers[: config.monitor_max_offers()]]
 
 
 def _observe_page(source, task, *, providers, llm_opts) -> dict[str, Any]:
@@ -138,7 +195,8 @@ def default_observer(db_path: Path | None = None) -> Callable[[dict[str, Any], d
     from sources.registry import build_providers
 
     providers = build_providers(quota_guard(db_path))
-    return lambda source, task: observe_source(source, task, providers=providers, db_path=db_path)
+    context = CheckContext()  # default_observer is built once per check_task call
+    return lambda source, task: observe_source(source, task, providers=providers, db_path=db_path, context=context)
 
 
 _NAME_SUFFIXES = re.compile(r"(\.co\.nz|\.com|\.nz|\bnew zealand\b|\bnz\b|\blimited\b|\bltd\b|\bonline\b|\bstore\b)", re.I)
