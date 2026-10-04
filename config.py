@@ -72,6 +72,34 @@ def llm_model() -> str:
     )
 
 
+def _agent_override(base: str, agent: str | None) -> str:
+    if agent:
+        value = _get(f"{base}_{agent.upper()}")
+        if value:
+            return value
+    return _get(base)
+
+
+def llm_settings(agent: str | None = None) -> tuple[str, str, str]:
+    """(api_key, base_url, model) for one agent.
+
+    ``LLM_API_KEY_<AGENT>`` / ``LLM_API_BASE_URL_<AGENT>`` / ``LLM_MODEL_<AGENT>``
+    override the global ``LLM_*`` values, so e.g. the select agent can use a
+    stronger model than the rewrite agent.
+    """
+    values = []
+    for base, guidance in (
+        ("LLM_API_KEY", "Set LLM_API_KEY in .env (copied from .env.example). Do not commit it."),
+        ("LLM_API_BASE_URL", "Set LLM_API_BASE_URL in .env, e.g. https://api.deepseek.com."),
+        ("LLM_MODEL", "Set LLM_MODEL in .env to an available model ID from your provider."),
+    ):
+        value = _agent_override(base, agent)
+        if not value:
+            raise ConfigError(f"Missing {base}. {guidance}")
+        values.append(value)
+    return values[0], values[1], values[2]
+
+
 def _finite_positive_float(raw: str, default: str, name: str) -> float:
     try:
         value = float(raw or default)
