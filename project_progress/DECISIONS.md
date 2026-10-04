@@ -397,3 +397,10 @@ Supersedes the scraping, retailer-adapter, regex identity-matching and demo-mode
 - **ADR-R6 — Pluggable providers.** `ShoppingSearch`, `OfferSource` and `PageExtractor` protocols with a registry; providers without keys are reported unavailable. Browser-automation agents were rejected (cost, latency, anti-bot concerns); MCP providers are deferred.
 - **ADR-R7 — No demo mode.** Demo branches were spread through the web layer; tests now inject fakes through `webapp.Services` and the scheduler's `observer`/`verifier`/`send_fn`.
 - **ADR-R8 — Schema versioning.** `PRAGMA user_version` = 1 with an automatic `<db>.pre-v1.bak` backup before the first migration; legacy sources become `url` sources.
+
+## Multi-Merchant Monitoring and Real Evaluation (2026-10-05)
+
+- **ADR-R9 — Serper primary, SerpApi supplement.** Serper's Google Shopping endpoint returns the same productIds at a fraction of the cost; SerpApi stays for product detail (stores, shipping, store links), as automatic fallback when Serper fails, and for evaluation links. Each has its own daily cap.
+- **ADR-R10 — Same-product matching with hard limits.** Google lists each merchant separately, so matching groups listings: candidates only from the find's evidence plus at most one extra search; code pre-filter (brand/model numbers, condition, NZD, no converted overseas price, 50–150% price band); one listing per merchant; offer-verifier veto; at most MONITOR_MAX_SOURCES; only trusted merchants pre-selected.
+- **ADR-R11 — One shared search per check.** A task's sources share a search query; each check runs it once and reads each merchant by productId, so cost does not grow with the number of merchants. Missing listings get at most two SerpApi detail lookups.
+- **ADR-R12 — Structured data before AI for page prices.** Real pages showed superscript cents ("$ 448 00"), instalment amounts and RRP prices fooling text extraction. A single JSON-LD product offer is used directly; an AI price must appear verbatim on the page; prompts exclude instalment/RRP/ex-GST prices; the agent gets the page URL to read a bare "$" on .nz sites as NZD. Real agreement went from 60% to 100% on the same 14–15 pages.

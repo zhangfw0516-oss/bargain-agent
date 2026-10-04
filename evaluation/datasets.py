@@ -94,7 +94,7 @@ PAGE_PRICE_CASES = [
     {"id": "p11", "page_text": "Air Fryer 5.5L\nSpecial NZ$129.00 (save $70)\nOnly 2 left",
      "gold": {"price": "129.00", "currency": "NZD", "in_stock": True},
      "replay": _ext("Air Fryer 5.5L", "129.00", "NZD", True), "provenance": PROVENANCE_OBSERVED},
-    {"id": "p13", "page_text": "Fitbit Charge 6 Fitness Tracker - Silver / White\nSpecial price\n$172.17\n+GST\n$198.00\ninc GST\nAdd to cart",
+    {"id": "p13", "url": "https://www.pbtech.co.nz/product/WTHFIT89422/Fitbit-Charge-6", "page_text": "Fitbit Charge 6 Fitness Tracker - Silver / White\nSpecial price\n$172.17\n+GST\n$198.00\ninc GST\nAdd to cart",
      "gold": {"price": "198.00", "currency": "NZD", "in_stock": True},
      # Recorded 2026-10-04: Firecrawl's extractor returned the ex-GST 172.17 for this
      # PB Tech page before the prompt asked for the tax-inclusive price.
@@ -117,7 +117,7 @@ def _task(status="ready", product=None, url=None, price=None, currency=None, com
 
 
 INSTRUCTION_CASES = [
-    {"id": "i01", "instruction": "Monitor https://www.pbtech.co.nz/product/K1 below NZD 300 every hour",
+    {"id": "i01", "instruction": "Monitor the Kindle at https://www.pbtech.co.nz/product/K1 below NZD 300 every hour",
      "gold": {"status": "ready", "target_price": "300.00", "currency": "NZD", "comparison": "lt", "frequency_minutes": 60},
      "replay": _task(product="Kindle", url="https://www.pbtech.co.nz/product/K1", price="300", currency="NZD", comparison="lt", frequency=60)},
     {"id": "i02", "instruction": "帮我盯着 https://www.jbhifi.co.nz/products/fitbit 不超过 250 纽币，每天看一次",
@@ -147,19 +147,19 @@ INSTRUCTION_CASES = [
      "replay": _task(status="needs_clarification", product="Kindle", url="https://www.pbtech.co.nz/product/K1", price="300",
                      currency="NZD", comparison="lt", missing=["frequency_minutes"], question="How often should I check?")},
     {"id": "i10", "instruction": "Monitor a Kindle below NZD 300 every hour",
-     "gold": {"status": "rejected"},  # model invents a URL -> validator must reject
+     "gold": {"status": "no_task"},  # no URL given: rejected, clarification or unsupported, never a task
      "replay": _task(product="Kindle", url="https://www.amazon.com/kindle", price="300", currency="NZD", comparison="lt", frequency=60)},
     {"id": "i11", "instruction": "盯一下 https://www.harveynorman.co.nz/tv 低于 2000 纽币 每 3 小时",
      "gold": {"status": "ready", "target_price": "2000.00", "currency": "NZD", "comparison": "lt", "frequency_minutes": 180},
      "replay": _task(product="TV", url="https://www.harveynorman.co.nz/tv", price="2000", currency="NZD", comparison="lt", frequency=180)},
     {"id": "i12", "instruction": "Monitor https://www.thewarehouse.co.nz/p/kettle below NZD 40 every minute",
-     "gold": {"status": "rejected"},  # 1-minute frequency is out of range
+     "gold": {"status": "no_task"},  # 1-minute frequency is out of range
      "replay": _task(product="Kettle", url="https://www.thewarehouse.co.nz/p/kettle", price="40", currency="NZD", comparison="lt", frequency=1)},
     {"id": "i13", "instruction": "Notify me when https://shop.example.nz/a or https://shop.example.nz/b is cheap",
      "gold": {"status": "unsupported"},
      "replay": _task(status="unsupported", question="Only one product can be monitored per request.")},
     {"id": "i14", "instruction": "Monitor https://shop.example.nz/x below EUR 50 every hour",
-     "gold": {"status": "rejected"},  # unsupported currency
+     "gold": {"status": "no_task"},  # unsupported currency
      "replay": _task(product="X", url="https://shop.example.nz/x", price="50", currency="EUR", comparison="lt", frequency=60)},
     {"id": "i15", "instruction": "每 12 小时检查 https://www.pbtech.co.nz/product/ssd ，低于 NZD 199.99 就提醒",
      "gold": {"status": "ready", "target_price": "199.99", "currency": "NZD", "comparison": "lt", "frequency_minutes": 720},

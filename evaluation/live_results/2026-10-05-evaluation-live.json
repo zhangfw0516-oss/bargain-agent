@@ -1,0 +1,957 @@
+{
+  "mode": "live",
+  "tracks": {
+    "offer_price_parsing": {
+      "name": "offer_price_parsing",
+      "description": "Google Shopping price strings -> amount + currency (deterministic).",
+      "n_cases": 26,
+      "metrics": {
+        "exact_accuracy": 1.0,
+        "amount_accuracy": 1.0,
+        "currency_accuracy": 1.0,
+        "false_price_rate": 0.0,
+        "trusted_accuracy": 1.0,
+        "unverified_accuracy": 1.0,
+        "merchants": 20
+      },
+      "cases": [
+        {
+          "id": "o01",
+          "merchant": "PB Tech",
+          "trusted": true,
+          "expected": [
+            "1299.00",
+            "NZD"
+          ],
+          "actual": [
+            "1299.00",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o02",
+          "merchant": "JB Hi-Fi",
+          "trusted": true,
+          "expected": [
+            "229.00",
+            "NZD"
+          ],
+          "actual": [
+            "229.00",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o03",
+          "merchant": "Noel Leeming",
+          "trusted": true,
+          "expected": [
+            "349.99",
+            "NZD"
+          ],
+          "actual": [
+            "349.99",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o04",
+          "merchant": "Harvey Norman",
+          "trusted": true,
+          "expected": [
+            "1048.00",
+            "NZD"
+          ],
+          "actual": [
+            "1048.00",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o05",
+          "merchant": "The Warehouse",
+          "trusted": true,
+          "expected": [
+            "19.98",
+            "NZD"
+          ],
+          "actual": [
+            "19.98",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o06",
+          "merchant": "Mighty Ape",
+          "trusted": true,
+          "expected": [
+            "89.00",
+            "NZD"
+          ],
+          "actual": [
+            "89.00",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o07",
+          "merchant": "Smiths City",
+          "trusted": true,
+          "expected": [
+            "599.00",
+            "NZD"
+          ],
+          "actual": [
+            "599.00",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o08",
+          "merchant": "Computer Lounge",
+          "trusted": true,
+          "expected": [
+            "2499.00",
+            "NZD"
+          ],
+          "actual": [
+            "2499.00",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o09",
+          "merchant": "Apple",
+          "trusted": true,
+          "expected": [
+            "1999.00",
+            "NZD"
+          ],
+          "actual": [
+            "1999.00",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o10",
+          "merchant": "Heathcotes",
+          "trusted": true,
+          "expected": [
+            "449.00",
+            "NZD"
+          ],
+          "actual": [
+            "449.00",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o11",
+          "merchant": "Overseas Gadgets",
+          "trusted": false,
+          "expected": [
+            "150.00",
+            "USD"
+          ],
+          "actual": [
+            "150.00",
+            "USD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o12",
+          "merchant": "Aussie Store",
+          "trusted": false,
+          "expected": [
+            "199.00",
+            "AUD"
+          ],
+          "actual": [
+            "199.00",
+            "AUD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o13",
+          "merchant": "Euro Shop",
+          "trusted": false,
+          "expected": [
+            "120.00",
+            null
+          ],
+          "actual": [
+            "120.00",
+            null
+          ],
+          "passed": true
+        },
+        {
+          "id": "o14",
+          "merchant": "Random Reseller",
+          "trusted": false,
+          "expected": [
+            null,
+            null
+          ],
+          "actual": [
+            null,
+            null
+          ],
+          "passed": true
+        },
+        {
+          "id": "o15",
+          "merchant": "Random Reseller",
+          "trusted": false,
+          "expected": [
+            null,
+            "NZD"
+          ],
+          "actual": [
+            null,
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o16",
+          "merchant": "Trade Me Seller",
+          "trusted": false,
+          "expected": [
+            "75.50",
+            "NZD"
+          ],
+          "actual": [
+            "75.50",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o17",
+          "merchant": "Small Shop NZ",
+          "trusted": false,
+          "expected": [
+            "12.90",
+            "NZD"
+          ],
+          "actual": [
+            "12.90",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o18",
+          "merchant": "PB Tech",
+          "trusted": true,
+          "expected": [
+            "3149.00",
+            "NZD"
+          ],
+          "actual": [
+            "3149.00",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o19",
+          "merchant": "JB Hi-Fi",
+          "trusted": true,
+          "expected": [
+            "59.00",
+            "NZD"
+          ],
+          "actual": [
+            "59.00",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o20",
+          "merchant": "Noel Leeming",
+          "trusted": true,
+          "expected": [
+            null,
+            null
+          ],
+          "actual": [
+            null,
+            null
+          ],
+          "passed": true
+        },
+        {
+          "id": "o21",
+          "merchant": "Gadget Hub",
+          "trusted": false,
+          "expected": [
+            "1299.00",
+            "NZD"
+          ],
+          "actual": [
+            "1299.00",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o22",
+          "merchant": "Harvey Norman",
+          "trusted": true,
+          "expected": [
+            "4999.00",
+            "NZD"
+          ],
+          "actual": [
+            "4999.00",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o23",
+          "merchant": "Harvey Norman New Zealand",
+          "trusted": true,
+          "expected": [
+            "220.00",
+            "NZD"
+          ],
+          "actual": [
+            "220.00",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o24",
+          "merchant": "MightyApe.co.nz",
+          "trusted": true,
+          "expected": [
+            "231.84",
+            "NZD"
+          ],
+          "actual": [
+            "231.84",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o25",
+          "merchant": "StrapsCo",
+          "trusted": false,
+          "expected": [
+            "56.96",
+            "NZD"
+          ],
+          "actual": [
+            "56.96",
+            "NZD"
+          ],
+          "passed": true
+        },
+        {
+          "id": "o26",
+          "merchant": "PB Tech",
+          "trusted": true,
+          "expected": [
+            "539.00",
+            "NZD"
+          ],
+          "actual": [
+            "539.00",
+            "NZD"
+          ],
+          "passed": true
+        }
+      ],
+      "failures": [],
+      "provenance": {
+        "observed": 16,
+        "synthetic": 10
+      }
+    },
+    "page_price_extraction": {
+      "name": "page_price_extraction",
+      "description": "Product-page text -> price via the price-extractor agent.",
+      "n_cases": 13,
+      "metrics": {
+        "exact_accuracy": 1.0,
+        "price_accuracy": 1.0,
+        "stock_accuracy": 1.0,
+        "false_price_rate": 0.0,
+        "mode": "live"
+      },
+      "cases": [
+        {
+          "id": "p01",
+          "expected": {
+            "price": "279.00",
+            "currency": "NZD",
+            "in_stock": true
+          },
+          "actual": {
+            "price": "279.00",
+            "currency": "NZD",
+            "in_stock": true
+          },
+          "passed": true
+        },
+        {
+          "id": "p02",
+          "expected": {
+            "price": "229.00",
+            "currency": "NZD",
+            "in_stock": false
+          },
+          "actual": {
+            "price": "229.00",
+            "currency": "NZD",
+            "in_stock": false
+          },
+          "passed": true
+        },
+        {
+          "id": "p03",
+          "expected": {
+            "price": "499.00",
+            "currency": "NZD",
+            "in_stock": true
+          },
+          "actual": {
+            "price": "499.00",
+            "currency": "NZD",
+            "in_stock": true
+          },
+          "passed": true
+        },
+        {
+          "id": "p04",
+          "expected": null,
+          "actual": null,
+          "passed": true
+        },
+        {
+          "id": "p05",
+          "expected": null,
+          "actual": null,
+          "passed": true
+        },
+        {
+          "id": "p06",
+          "expected": null,
+          "actual": null,
+          "passed": true
+        },
+        {
+          "id": "p07",
+          "expected": {
+            "price": "1149.00",
+            "currency": "NZD",
+            "in_stock": true
+          },
+          "actual": {
+            "price": "1149.00",
+            "currency": "NZD",
+            "in_stock": true
+          },
+          "passed": true
+        },
+        {
+          "id": "p08",
+          "expected": {
+            "price": "799.00",
+            "currency": "NZD",
+            "in_stock": null
+          },
+          "actual": {
+            "price": "799.00",
+            "currency": "NZD",
+            "in_stock": null
+          },
+          "passed": true
+        },
+        {
+          "id": "p09",
+          "expected": {
+            "price": "899.00",
+            "currency": "NZD",
+            "in_stock": true
+          },
+          "actual": {
+            "price": "899.00",
+            "currency": "NZD",
+            "in_stock": true
+          },
+          "passed": true
+        },
+        {
+          "id": "p10",
+          "expected": {
+            "price": "49.99",
+            "currency": "USD",
+            "in_stock": true
+          },
+          "actual": {
+            "price": "49.99",
+            "currency": "USD",
+            "in_stock": true
+          },
+          "passed": true
+        },
+        {
+          "id": "p11",
+          "expected": {
+            "price": "129.00",
+            "currency": "NZD",
+            "in_stock": true
+          },
+          "actual": {
+            "price": "129.00",
+            "currency": "NZD",
+            "in_stock": true
+          },
+          "passed": true
+        },
+        {
+          "id": "p13",
+          "expected": {
+            "price": "198.00",
+            "currency": "NZD",
+            "in_stock": true
+          },
+          "actual": {
+            "price": "198.00",
+            "currency": "NZD",
+            "in_stock": true
+          },
+          "passed": true
+        },
+        {
+          "id": "p12",
+          "expected": null,
+          "actual": null,
+          "passed": true
+        }
+      ],
+      "failures": [],
+      "provenance": {
+        "observed": 6,
+        "synthetic": 7
+      }
+    },
+    "instruction_parsing": {
+      "name": "instruction_parsing",
+      "description": "Natural-language monitoring instruction -> task fields (task-parser agent).",
+      "n_cases": 16,
+      "metrics": {
+        "full_match_accuracy": 0.9375,
+        "field_accuracy": 0.9811,
+        "mode": "live"
+      },
+      "cases": [
+        {
+          "id": "i01",
+          "expected": {
+            "status": "ready",
+            "target_price": "300.00",
+            "currency": "NZD",
+            "comparison": "lt",
+            "frequency_minutes": 60
+          },
+          "actual": {
+            "status": "ready",
+            "target_price": "300.00",
+            "currency": "NZD",
+            "comparison": "lt",
+            "frequency_minutes": 60
+          },
+          "passed": true
+        },
+        {
+          "id": "i02",
+          "expected": {
+            "status": "ready",
+            "target_price": "250.00",
+            "currency": "NZD",
+            "comparison": "lte",
+            "frequency_minutes": 1440
+          },
+          "actual": {
+            "status": "ready",
+            "target_price": "250.00",
+            "currency": "NZD",
+            "comparison": "lte",
+            "frequency_minutes": 1440
+          },
+          "passed": true
+        },
+        {
+          "id": "i03",
+          "expected": {
+            "status": "ready",
+            "target_price": "999.00",
+            "currency": "AUD",
+            "comparison": "lt",
+            "frequency_minutes": 360
+          },
+          "actual": {
+            "status": "ready",
+            "target_price": "999.00",
+            "currency": "AUD",
+            "comparison": "lt",
+            "frequency_minutes": 360
+          },
+          "passed": true
+        },
+        {
+          "id": "i04",
+          "expected": {
+            "status": "needs_clarification"
+          },
+          "actual": {
+            "status": "needs_clarification"
+          },
+          "passed": true
+        },
+        {
+          "id": "i05",
+          "expected": {
+            "status": "unsupported"
+          },
+          "actual": {
+            "status": "unsupported"
+          },
+          "passed": true
+        },
+        {
+          "id": "i06",
+          "expected": {
+            "status": "ready",
+            "target_price": "1200.00",
+            "currency": "NZD",
+            "comparison": "lt",
+            "frequency_minutes": 30
+          },
+          "actual": {
+            "status": "ready",
+            "target_price": "1200.00",
+            "currency": "NZD",
+            "comparison": "lt",
+            "frequency_minutes": 30
+          },
+          "passed": true
+        },
+        {
+          "id": "i07",
+          "expected": {
+            "status": "ready",
+            "target_price": "150.00",
+            "currency": "USD",
+            "comparison": "lt",
+            "frequency_minutes": 120
+          },
+          "actual": {
+            "status": "needs_clarification",
+            "target_price": "150.00",
+            "currency": "USD",
+            "comparison": "lt",
+            "frequency_minutes": 120
+          },
+          "passed": false
+        },
+        {
+          "id": "i08",
+          "expected": {
+            "status": "ready",
+            "target_price": "80.00",
+            "currency": "NZD",
+            "comparison": "lte",
+            "frequency_minutes": 1440
+          },
+          "actual": {
+            "status": "ready",
+            "target_price": "80.00",
+            "currency": "NZD",
+            "comparison": "lte",
+            "frequency_minutes": 1440
+          },
+          "passed": true
+        },
+        {
+          "id": "i09",
+          "expected": {
+            "status": "needs_clarification"
+          },
+          "actual": {
+            "status": "needs_clarification"
+          },
+          "passed": true
+        },
+        {
+          "id": "i10",
+          "expected": {
+            "status": "no_task"
+          },
+          "actual": {
+            "status": "no_task"
+          },
+          "passed": true
+        },
+        {
+          "id": "i11",
+          "expected": {
+            "status": "ready",
+            "target_price": "2000.00",
+            "currency": "NZD",
+            "comparison": "lt",
+            "frequency_minutes": 180
+          },
+          "actual": {
+            "status": "ready",
+            "target_price": "2000.00",
+            "currency": "NZD",
+            "comparison": "lt",
+            "frequency_minutes": 180
+          },
+          "passed": true
+        },
+        {
+          "id": "i12",
+          "expected": {
+            "status": "no_task"
+          },
+          "actual": {
+            "status": "no_task"
+          },
+          "passed": true
+        },
+        {
+          "id": "i13",
+          "expected": {
+            "status": "unsupported"
+          },
+          "actual": {
+            "status": "unsupported"
+          },
+          "passed": true
+        },
+        {
+          "id": "i14",
+          "expected": {
+            "status": "no_task"
+          },
+          "actual": {
+            "status": "no_task"
+          },
+          "passed": true
+        },
+        {
+          "id": "i15",
+          "expected": {
+            "status": "ready",
+            "target_price": "199.99",
+            "currency": "NZD",
+            "comparison": "lt",
+            "frequency_minutes": 720
+          },
+          "actual": {
+            "status": "ready",
+            "target_price": "199.99",
+            "currency": "NZD",
+            "comparison": "lt",
+            "frequency_minutes": 720
+          },
+          "passed": true
+        },
+        {
+          "id": "i16",
+          "expected": {
+            "status": "ready",
+            "target_price": "649.00",
+            "currency": "NZD",
+            "comparison": "lte",
+            "frequency_minutes": 240,
+            "condition": "refurbished"
+          },
+          "actual": {
+            "status": "ready",
+            "target_price": "649.00",
+            "currency": "NZD",
+            "comparison": "lte",
+            "frequency_minutes": 240,
+            "condition": "refurbished"
+          },
+          "passed": true
+        }
+      ],
+      "failures": [
+        "i07"
+      ],
+      "provenance": {
+        "synthetic": 16
+      }
+    },
+    "notification_trigger": {
+      "name": "notification_trigger",
+      "description": "Check sequences through the real scheduler with fake observer/notifier.",
+      "n_cases": 10,
+      "metrics": {
+        "scenario_accuracy": 1.0,
+        "send_precision": 1.0,
+        "send_recall": 1.0,
+        "unexpected_send_rate": 0.0,
+        "steps": 19
+      },
+      "cases": [
+        {
+          "id": "n01",
+          "description": "trusted drop, stays low, rises, drops again",
+          "expected": [
+            true,
+            false,
+            false,
+            true
+          ],
+          "actual": [
+            true,
+            false,
+            false,
+            true
+          ],
+          "passed": true
+        },
+        {
+          "id": "n02",
+          "description": "only an unverified merchant is cheap",
+          "expected": [
+            false,
+            false
+          ],
+          "actual": [
+            false,
+            false
+          ],
+          "passed": true
+        },
+        {
+          "id": "n03",
+          "description": "cheaper refurbished offer is ignored",
+          "expected": [
+            false
+          ],
+          "actual": [
+            false
+          ],
+          "passed": true
+        },
+        {
+          "id": "n04",
+          "description": "out of stock, then back in stock",
+          "expected": [
+            false,
+            true
+          ],
+          "actual": [
+            false,
+            true
+          ],
+          "passed": true
+        },
+        {
+          "id": "n05",
+          "description": "a failed check between deal observations neither resets nor re-sends",
+          "expected": [
+            true,
+            false,
+            false
+          ],
+          "actual": [
+            true,
+            false,
+            false
+          ],
+          "passed": true
+        },
+        {
+          "id": "n06",
+          "description": "price exactly at the threshold (lte)",
+          "expected": [
+            true
+          ],
+          "actual": [
+            true
+          ],
+          "passed": true
+        },
+        {
+          "id": "n07",
+          "description": "cheap offer in another currency",
+          "expected": [
+            false
+          ],
+          "actual": [
+            false
+          ],
+          "passed": true
+        },
+        {
+          "id": "n08",
+          "description": "transient SMTP failure is retried on the next check",
+          "expected": [
+            false,
+            true
+          ],
+          "actual": [
+            false,
+            true
+          ],
+          "passed": true
+        },
+        {
+          "id": "n09",
+          "description": "several sellers below target produce one email",
+          "expected": [
+            true,
+            false
+          ],
+          "actual": [
+            true,
+            false
+          ],
+          "passed": true
+        },
+        {
+          "id": "n10",
+          "description": "an unknown stock level never triggers",
+          "expected": [
+            false
+          ],
+          "actual": [
+            false
+          ],
+          "passed": true
+        }
+      ],
+      "failures": [],
+      "provenance": {
+        "synthetic": 10
+      }
+    }
+  }
+}

@@ -13,9 +13,16 @@ Verified with real calls (scrubbed recordings in `tests/fixtures/serpapi/*record
 
 - A real Find run (deepseek-flash) passed all five stages after capping the select input at 30 pre-ranked listings (60 listings had truncated its answer).
 
-Still unverified: Tavily Extract, the offer-verifier prompt on real offers, and `python -m evaluation --live`.
+- 2026-10-05: Serper verified (same productIds as SerpApi); real multi-merchant Find → task → one email → no duplicate; real price sample 14/14 exact after the JSON-LD fix; `--live` evaluation 13/13 page prices, 15/16 instructions (see `docs/EVALUATION.md`).
+
+Still unverified: Tavily Extract; inbox arrival of the test email; a week-long monitoring run.
 
 ## Behaviour to be aware of
+
+- Most Google Shopping results are one merchant's listing; multi-merchant comparison comes from same-product matching (at most `MONITOR_MAX_SOURCES`, default 5) and one shared search per check.
+- Serper results carry no shipping, store link or second-hand field (condition is read from the title); shipping appears only when SerpApi detail is available.
+- A merchant listing that drops out of the shared search is looked up on SerpApi at most twice per check; otherwise it is a source error for that check.
+- Harvey Norman pages have no usable JSON-LD for Scrape.do; Firecrawl (next in the chain) reads them.
 
 - Google Shopping offers carry no stock field (stores say e.g. "In stock online"); an offer is treated as in stock unless its details say out of stock / sold out.
 - A bare `$` is read as NZD only in Google Shopping results for `gl=nz`; on product pages a bare `$` without a stated currency is not a usable price.

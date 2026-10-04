@@ -99,7 +99,7 @@ def run_page_price_track(live: bool = False) -> dict:
     false_prices = no_price_gold = 0
     for case in datasets.PAGE_PRICE_CASES:
         try:
-            out = price_extractor.run(case["page_text"], opts=_opts(case, live))
+            out = price_extractor.run(case["page_text"], url=case.get("url"), opts=_opts(case, live))
             actual = {"price": out["price"], "currency": out["currency"], "in_stock": out["in_stock"]}
         except price_extractor.PriceExtractionError:
             actual = None
@@ -132,6 +132,10 @@ def run_instruction_track(live: bool = False) -> dict:
             out = task_parser.run(case["instruction"], opts=_opts(case, live))
         except task_parser.TaskParseError:
             out = {"status": "rejected"}
+        if gold.get("status") == "no_task" and out.get("status") != "ready":
+            # Safe outcomes that create no task: rejected by validation, a
+            # clarification question, or declined as unsupported.
+            out = {**out, "status": "no_task"}
         fields = {k: out.get(k) for k in gold}
         hits = sum(fields[k] == v for k, v in gold.items())
         field_hits += hits

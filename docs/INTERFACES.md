@@ -43,9 +43,13 @@ A recommendation: `id, title, link, merchant, price, currency, price_source (ser
 
 Errors: `NotConfigured`, `AuthError`, `RateLimited`, `QuotaExceeded`, `ProviderTimeout`, `Unavailable` (all `ProviderError`). `request_json` maps HTTP status and rebuilds transport errors without URLs. `registry.build_providers(before_call)` assembles configured providers; `before_call(name)` runs before each billable call.
 
+## Matching — `matching.py`
+
+`find_same_product(chosen, pool, need, *, verifier, max_sources) -> [match]` — same product at other merchants: rule pre-filter (`rule_candidates`), one listing per merchant, verifier veto, capped at `max_sources - 1`; each match has `id, title, merchant, price, currency, product_id, page_token, link, trusted, verified, preselect`. `monitor_query(title)` builds the shared search query.
+
 ## Pricing — `pricing.py`
 
-- `observe_source(source, task, *, providers, db_path, llm_opts) -> [quote]` — raises `ObservationError`.
+- `observe_source(source, task, *, providers, db_path, llm_opts, context) -> [quote]` — raises `ObservationError`. Product sources read their listing from one shared search per check (`CheckContext`), then at most two SerpApi detail lookups.
 - `quota_guard(db_path)` — counts calls in `api_usage`; SerpApi limited by `SERPAPI_DAILY_MAX_CALLS`.
 - `merchant_trust(merchant, link, trusted=None)`, `is_safe_public_url(url)`, `host_of(url)`.
 
@@ -78,8 +82,8 @@ All POSTs need matching `Host`, `Origin`, `csrftoken` cookie and `X-CSRF-Token`;
 | `GET /api/tasks/{id}`, `/history` | detail, history, events |
 | `GET /api/setup/status` | missing keys only, provider status |
 | `POST /api/find` `{description}` | run the pipeline; returns `token` + recommendations (no writes) |
-| `POST /api/find/preview` `{token, rec_id}` | every seller of the product, suggested target (no writes) |
-| `POST /api/find/confirm` `{token, rec_id, target_price, comparison, currency, frequency_minutes}` | creates the task; idempotent per token + rec |
+| `POST /api/find/preview` `{token, rec_id}` | the product's sellers + `matches` at other merchants (≤ 1 extra search), suggested target (no writes) |
+| `POST /api/find/confirm` `{token, rec_id, target_price, comparison, currency, frequency_minutes, extra_ids}` | creates the task with the chosen listing plus selected matches (capped); idempotent per token + rec |
 | `POST /api/tasks/add` `{instruction}` or explicit fields | direct URL task |
 | `POST /api/tasks/{id}/check` `{confirm: true}` | check now (may email) |
 | `POST /api/check/due` `{confirm: true}` | check all due tasks |
