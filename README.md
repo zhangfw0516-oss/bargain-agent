@@ -1,6 +1,6 @@
 # Bargain Agent
 
-An agentic AI system to monitor bargain deals of retailers — 159.333 Computer Science Project, Massey University, Semester 2 2026.
+An agentic AI system that finds products and monitors bargain prices across New Zealand retailers — 159.333 Computer Science Project, Massey University, Semester 2 2026.
 
 ## Team
 
@@ -12,89 +12,85 @@ An agentic AI system to monitor bargain deals of retailers — 159.333 Computer 
 | Agent Dev & Test | Xiao Zhang (24009323) | 274751389@qq.com |
 | Agent Dev & Test | Wenhan Zhang (24009400) | 3384155536@qq.com |
 
-## Development Plan
+## How it works
 
-**当前阶段 / Current work:** [每位成员的阶段 01 任务](docs/stages/01-foundation.md)。[阶段索引与滚动复盘流程](docs/stages/README.md) · [下一阶段模板](docs/stages/TEMPLATE.md)。
-
-See [分阶段开发与验收计划](DEVELOPMENT_PLAN.md) for phase checklists, team responsibilities, acceptance criteria, progress tracking, and the proposed DeepSeek integration. The plan describes pending work, not implemented features.
-
-## Quick Start
-
-### For non-technical users (Windows)
-
-Share `dist/bargain-agent-windows.zip` (built with `python tools_build_package.py`).
-The recipient unzips, double-clicks **`Start Bargain Agent.bat`**, and the local web
-page opens. Demo mode works with zero setup; the **Setup** section of the page
-collects the recipient email, SMTP sender details + app password, and the DeepSeek
-API key for live mode. See the README inside the package (bilingual) for the full
-path and the limitations (no monitoring while the PC sleeps or the app is closed).
-
-### For developers
-
-```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate   # Linux/macOS
-venv\Scripts\activate      # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Copy and edit environment variables
-cp .env.example .env
-
-# Run offline tests (no network, LLM or SMTP required)
-python -m unittest discover -s tests -v
-
-# Local web interface — demo mode by default (offline parser, demo shops,
-# fake notifications). Use --live for real shops / parsing / email.
-python webapp.py --port 8765
-
-# Add a monitoring task (requires LLM credentials). Shows a summary and asks for confirmation.
-python main.py add --email me@example.com "Monitor https://www.pbtech.co.nz/product/X when below NZD 300"
-
-# List tasks
-python main.py list
-
-# Run one check
-python main.py check 1
-
-# Start the scheduler loop
-python main.py run
+```mermaid
+flowchart LR
+    D[Description] --> U[Understand agent] --> R[Rewrite agent] --> S[Search<br/>SerpApi Google Shopping<br/>+ Firecrawl supplement]
+    S --> Sel[Select agent] -->|nothing suitable, retry once| R
+    Sel --> Desc[Describe agent] --> P[Preview: every seller] --> C[User confirms]
+    C --> T[(SQLite task)]
+    T --> M[Scheduler] --> O[SerpApi offers / page extractor + price agent]
+    O --> V[Offer-verifier agent<br/>veto only] --> N[Deal? trusted merchant<br/>one email per episode]
 ```
 
-## Project Structure
+- **Find** is a LangGraph pipeline of AI agents (`pipeline.py`, `agents/`). Search itself is code: SerpApi Google Shopping returns structured listings with prices, so retailer sites are not scraped. Firecrawl adds candidates only when Google returns too few, and their prices must be read from the page by the price-extractor agent.
+- **Agents choose, code decides.** Agents may only pick server-assigned evidence ids; every model output is validated; budget/condition vetoes, deal thresholds, deduplication and send permits are deterministic. Every agent falls back to plain code when the model is unavailable.
+- **Monitoring** re-lists every seller of the confirmed Google product on each check (multi-merchant comparison for one SerpApi call). A pasted product URL is read through Tavily/Firecrawl and the price-extractor agent.
+- **All merchants are shown; trusted merchants trigger alerts** (`TRUSTED_MERCHANTS`, `ALERT_TRUSTED_ONLY`). Second-hand offers are rejected unless requested, and the offer-verifier agent can veto wrong models and bundles.
+- **Cost guards:** `SERPAPI_DAILY_MAX_CALLS`, `FIND_MAX_QUERIES`, `MONITOR_MIN_FREQUENCY_MINUTES`.
 
-```
-bargain-agent/
-├── agent.py             # LLM instruction parsing
-├── webapp.py            # Local web interface (stdlib http.server, demo/live)
-├── config_setup.py      # First-run configuration (writes app-local .env)
-├── demo_data.py         # Offline demo parser/shops/fake notifier (web demo)
-├── scraper.py           # Web scraping (PB Tech JSON-LD)
-├── notifier.py          # Email notifications (SMTP)
-├── storage.py           # SQLite persistence
-├── scheduler.py         # Periodic price checks
-├── cli.py               # Command-line interface
-├── main.py              # CLI entry point
-├── schemas.py           # Request/quote validation
-├── config.py            # Environment configuration
-├── static/              # Web UI (single-page, English)
-├── prompts/             # Versioned LLM prompts
-├── retailers/           # Shop adapters (PB Tech, JB Hi-Fi, Mighty Ape)
-├── tools_build_package.py  # Builds the Windows one-click package into dist/
-├── dist/                # Distributable package (zip) — generated
-├── tests/               # Offline test suite
-├── docs/                # Architecture & milestone docs
-├── project_progress/    # Status, decisions, handoff
-├── requirements.txt     # Python dependencies
-├── .env.example         # Environment variable template
-└── PROPOSAL.md          # Full project proposal
+The app never buys anything and does not claim the lowest price on the whole web. Shipping is not included in prices.
+
+## Quick start (Windows, Python 3.13)
+
+```powershell
+py -3.13 -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env   # then fill in LLM, SERPAPI, SMTP and DEFAULT_NOTIFY_EMAIL
+.\venv\Scripts\python.exe webapp.py --port 8765
 ```
 
-## Milestone Docs
+Open http://127.0.0.1:8765/. Checks and continuous monitoring send **real** emails and ask for confirmation first.
 
-- [M40 — Real, Recoverable Price Monitoring Foundation](docs/M40.md)
-- [Module Interfaces](docs/INTERFACES.md)
-- [System Context](docs/SYSTEM_CONTEXT.md)
+### CLI
 
+```powershell
+.\venv\Scripts\python.exe main.py find "跑步用的无线耳机，300 纽币以内"
+.\venv\Scripts\python.exe main.py add "Monitor https://shop.example.nz/p/123 below NZD 250 every day"
+.\venv\Scripts\python.exe main.py list
+.\venv\Scripts\python.exe main.py sources 1
+.\venv\Scripts\python.exe main.py history 1
+.\venv\Scripts\python.exe main.py modify 1 --target-price 220
+.\venv\Scripts\python.exe main.py pause 1   # resume / stop
+.\venv\Scripts\python.exe main.py check 1   # may send an email
+.\venv\Scripts\python.exe main.py run       # scheduler loop
+```
+
+### Tests and evaluation (offline)
+
+```powershell
+.\venv\Scripts\python.exe -m unittest discover -s tests
+.\venv\Scripts\python.exe -m evaluation          # replayed model answers
+.\venv\Scripts\python.exe -m evaluation --live   # real model, costs calls
+```
+
+## Project structure
+
+```
+pipeline.py        LangGraph Find pipeline (understand → rewrite → search → select → describe)
+agents/            AI agents: understand, rewrite, select, describe, task_parser,
+                   price_extractor, offer_verifier, deal_summary
+llm.py             Single validated LLM entry point (call_json), per-agent model config
+sources/           Providers behind protocols: serpapi, tavily, firecrawl, registry
+pricing.py         Source observation, quota guard, merchant trust, URL safety
+scheduler.py       Checks, identity verdicts, deal decision, send permits, dedup
+storage.py         SQLite schema (PRAGMA user_version) and persistence
+notifier.py        SMTP email
+webapp.py, static/ Local web UI (127.0.0.1, CSRF/Origin/Host guarded)
+cli.py, main.py    Command line
+schemas.py         Validation of task and price-extraction outputs
+config.py          .env configuration
+prompts/           Agent prompts
+evaluation/        Price, instruction and notification accuracy
+tests/             Offline test suite
+archive/           Historical docs and one-off scripts
+```
+
+## Docs
+
+- [Module interfaces](docs/INTERFACES.md)
+- [System context](docs/SYSTEM_CONTEXT.md)
+- [Evaluation](docs/EVALUATION.md)
+- [Decisions](project_progress/DECISIONS.md) · [Known issues](project_progress/KNOWN_ISSUES.md)
+- [Proposal](PROPOSAL.md)

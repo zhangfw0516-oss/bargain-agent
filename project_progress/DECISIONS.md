@@ -384,3 +384,16 @@
   **Why:** the expected labels and the implementation share the same authors, so a high pass
   rate proves conformance, not generalisation. **How to apply:** never quote the offline 1.00
   as a real-world accuracy in the course report.
+
+## SerpApi / Multi-Agent Refactor (2026-10-04)
+
+Supersedes the scraping, retailer-adapter, regex identity-matching and demo-mode decisions above.
+
+- **ADR-R1 — SerpApi Google Shopping replaces retailer scraping.** Direct scraping kept failing (Mighty Ape DataDome 403) and every shop needed its own adapter. Google Shopping returns structured listings and seller offers for all merchants Google indexes in NZ, so discovery and monitoring use SerpApi; pasted product URLs use Tavily/Firecrawl extraction plus the price-extractor agent. Trade-off: per-call cost and quota, mitigated by `SERPAPI_DAILY_MAX_CALLS`, `FIND_MAX_QUERIES` and `MONITOR_MIN_FREQUENCY_MINUTES`.
+- **ADR-R2 — One Find path: a LangGraph pipeline of agents.** understand → rewrite → search (code) → select → describe, with one bounded select→rewrite retry. LangGraph only orchestrates; model calls go through `llm.call_json` so validation and retries stay ours. The standard Search flow and the old iterative loop were deleted.
+- **ADR-R3 — Agents choose, code decides.** Agents may only reference server-assigned ids; every output is validated; budget/condition vetoes, deal thresholds, deduplication and send permits are deterministic; every agent has a deterministic fallback.
+- **ADR-R4 — Offer verifier is a veto, not a gate.** Google's product id is the identity. A condition pre-filter rejects unrequested second-hand offers in code; the verifier agent may only downgrade offers, its verdicts are cached per offer, and an unavailable verifier leaves offers `unverified` (usable for alerts, blocking episode resets).
+- **ADR-R5 — Discover everywhere, alert from trusted merchants.** All merchants are shown; only `TRUSTED_MERCHANTS` trigger emails by default (`ALERT_TRUSTED_ONLY`). A pasted URL counts as trusted because the user chose it.
+- **ADR-R6 — Pluggable providers.** `ShoppingSearch`, `OfferSource` and `PageExtractor` protocols with a registry; providers without keys are reported unavailable. Browser-automation agents were rejected (cost, latency, anti-bot concerns); MCP providers are deferred.
+- **ADR-R7 — No demo mode.** Demo branches were spread through the web layer; tests now inject fakes through `webapp.Services` and the scheduler's `observer`/`verifier`/`send_fn`.
+- **ADR-R8 — Schema versioning.** `PRAGMA user_version` = 1 with an automatic `<db>.pre-v1.bak` backup before the first migration; legacy sources become `url` sources.
