@@ -1,0 +1,11 @@
+{
+  "_note": "Shape synthesized from SerpApi google_shopping docs; replace with a recorded, key-scrubbed response after live verification.",
+  "search_metadata": {"status": "Success"},
+  "shopping_results": [
+    {"position": 1, "title": "Fitbit Charge 6 Fitness Tracker - Obsidian", "product_link": "https://www.google.co.nz/shopping/product/111", "product_id": "111", "immersive_product_page_token": "tok-111", "source": "Noel Leeming", "price": "$229.00", "extracted_price": 229.0, "thumbnail": "https://img.example/111.jpg", "delivery": "Free delivery"},
+    {"position": 2, "title": "Fitbit Charge 6 - Porcelain", "product_link": "https://www.google.co.nz/shopping/product/222", "product_id": "222", "immersive_product_page_token": "tok-222", "source": "PB Tech", "price": "NZ$239.00", "extracted_price": 239.0},
+    {"position": 3, "title": "Fitbit Charge 6 (Renewed)", "product_link": "https://www.google.co.nz/shopping/product/333", "product_id": "333", "source": "Some Reseller", "price": "$149.00", "extracted_price": 149.0, "second_hand_condition": "refurbished"},
+    {"position": 4, "title": "Fitbit Charge 6 Bands 3-pack", "link": "https://shop.example.nz/bands", "source": "Band Shop", "price": "$19.99"},
+    {"position": 5, "title": "Fitbit Charge 6 Fitness Tracker - Obsidian", "product_link": "https://www.google.co.nz/shopping/product/111", "product_id": "111", "source": "Duplicate", "price": "$229.00"}
+  ]
+}

@@ -58,42 +58,32 @@ class FakeLLM:
         )
 
 
-class FakeResponse:
-    def __init__(self, status: int = 200, payload: Any = None, *, text: str | None = None):
-        self.status_code = status
-        self._payload = payload
-        body = text if text is not None else json.dumps(payload if payload is not None else {})
-        self.content = body.encode("utf-8")
-        self.headers = {"Content-Type": "application/json"}
-
-    def json(self) -> Any:
-        return json.loads(self.content.decode("utf-8"))
-
-    def iter_content(self, chunk_size: int = 65536):
-        for i in range(0, len(self.content), chunk_size):
-            yield self.content[i : i + chunk_size]
-
-    def close(self) -> None:
-        pass
-
-
 class FakeSender:
-    """Records HTTP calls and returns queued responses (or a callable's result)."""
+    """A ``sources.base.Sender`` fake: records calls, returns queued responses.
+
+    Each queued item is a JSON-able object (HTTP 200), a ``(status, object)``
+    tuple, raw ``bytes``, an Exception to raise, or a callable
+    ``(method, url, kwargs) -> item``.
+    """
 
     def __init__(self, *responses: Any):
         self.responses = list(responses)
         self.calls: list[dict[str, Any]] = []
 
-    def __call__(self, method: str, url: str, **kwargs: Any) -> FakeResponse:
+    def __call__(self, method: str, url: str, **kwargs: Any) -> tuple[int, bytes]:
         self.calls.append({"method": method, "url": url, **kwargs})
         if not self.responses:
             raise AssertionError(f"Unexpected HTTP call: {method} {url}")
         value = self.responses.pop(0)
+        if callable(value) and not isinstance(value, type):
+            value = value(method, url, kwargs)
         if isinstance(value, Exception):
             raise value
-        if callable(value) and not isinstance(value, FakeResponse):
-            value = value(method, url, kwargs)
-        return value
+        status = 200
+        if isinstance(value, tuple):
+            status, value = value
+        body = value if isinstance(value, bytes) else json.dumps(value).encode("utf-8")
+        return status, body
 
 
 class FakeNotifier:

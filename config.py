@@ -205,6 +205,141 @@ def scraper_max_response_bytes() -> int:
     return value
 
 
+def _bool(name: str, default: bool) -> bool:
+    raw = _get(name).lower()
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return default
+
+
+def _int_in(name: str, default: int, low: int, high: int) -> int:
+    raw = _get(name)
+    try:
+        value = int(raw) if raw else default
+    except ValueError as exc:
+        raise ConfigError(f"{name} must be an integer") from exc
+    if not low <= value <= high:
+        raise ConfigError(f"{name} must be between {low} and {high}")
+    return value
+
+
+def _csv(name: str) -> list[str]:
+    return [part.strip() for part in _get(name).split(",") if part.strip()]
+
+
+# --- External providers ----------------------------------------------------
+
+def serpapi_api_key() -> str:
+    return _get("SERPAPI_API_KEY")
+
+
+def serpapi_timeout() -> float:
+    return _finite_positive_float(_get("SERPAPI_TIMEOUT"), "20.0", "SERPAPI_TIMEOUT")
+
+
+def serpapi_locale() -> dict[str, str]:
+    """Google locale parameters for every SerpApi request (New Zealand by default)."""
+    return {
+        "gl": _get("SERPAPI_GL") or "nz",
+        "hl": _get("SERPAPI_HL") or "en",
+        "google_domain": _get("SERPAPI_GOOGLE_DOMAIN") or "google.co.nz",
+        "location": _get("SERPAPI_LOCATION") or "New Zealand",
+    }
+
+
+def serpapi_daily_max_calls() -> int:
+    return _int_in("SERPAPI_DAILY_MAX_CALLS", 20, 0, 100_000)
+
+
+def tavily_api_key() -> str:
+    return _get("TAVILY_API_KEY")
+
+
+def tavily_timeout() -> float:
+    return _finite_positive_float(_get("TAVILY_TIMEOUT"), "20.0", "TAVILY_TIMEOUT")
+
+
+def firecrawl_api_key() -> str:
+    return _get("FIRECRAWL_API_KEY")
+
+
+def firecrawl_timeout() -> float:
+    return _finite_positive_float(_get("FIRECRAWL_TIMEOUT"), "30.0", "FIRECRAWL_TIMEOUT")
+
+
+PAGE_EXTRACTOR_NAMES = ("tavily", "firecrawl")
+
+
+def page_extractors() -> list[str]:
+    """Ordered fallback chain for reading a product page (``PAGE_EXTRACTORS``)."""
+    names = [n.lower() for n in _csv("PAGE_EXTRACTORS")] or ["tavily", "firecrawl"]
+    unknown = [n for n in names if n not in PAGE_EXTRACTOR_NAMES]
+    if unknown:
+        raise ConfigError(f"Unknown PAGE_EXTRACTORS: {', '.join(unknown)}")
+    return list(dict.fromkeys(names))
+
+
+def supplement_min_results() -> int:
+    """Run the supplementary search (Firecrawl) when SerpApi returns fewer results."""
+    return _int_in("SUPPLEMENT_MIN_RESULTS", 5, 0, 100)
+
+
+# --- Discovery / monitoring limits -------------------------------------------
+
+def find_max_queries() -> int:
+    return _int_in("FIND_MAX_QUERIES", 3, 1, 6)
+
+
+def find_deadline_seconds() -> int:
+    return _int_in("FIND_DEADLINE_SECONDS", 120, 10, 600)
+
+
+def find_max_recommendations() -> int:
+    return _int_in("FIND_MAX_RECOMMENDATIONS", 8, 1, 20)
+
+
+def monitor_min_frequency_minutes() -> int:
+    return _int_in("MONITOR_MIN_FREQUENCY_MINUTES", 360, 5, 525_600)
+
+
+def monitor_max_offers() -> int:
+    return _int_in("MONITOR_MAX_OFFERS", 20, 1, 100)
+
+
+#: Mainstream New Zealand merchants. Matched against the merchant name reported by
+#: Google Shopping or the link's domain. This is a trust list for ranking and alerts,
+#: not a crawl list: offers from other merchants are still shown.
+DEFAULT_TRUSTED_MERCHANTS = (
+    "pbtech.co.nz", "PB Tech",
+    "jbhifi.co.nz", "JB Hi-Fi",
+    "noelleeming.co.nz", "Noel Leeming",
+    "harveynorman.co.nz", "Harvey Norman",
+    "thewarehouse.co.nz", "The Warehouse",
+    "warehousestationery.co.nz", "Warehouse Stationery",
+    "mightyape.co.nz", "Mighty Ape",
+    "smithscity.co.nz", "Smiths City",
+    "apple.com", "Apple",
+    "computerlounge.co.nz", "Computer Lounge",
+    "heathcotes.co.nz", "Heathcotes",
+    "100percent.co.nz", "100% Appliances",
+)
+
+
+def trusted_merchants() -> list[str]:
+    return _csv("TRUSTED_MERCHANTS") or list(DEFAULT_TRUSTED_MERCHANTS)
+
+
+def alert_trusted_only() -> bool:
+    return _bool("ALERT_TRUSTED_ONLY", True)
+
+
+def llm_offer_verify() -> bool:
+    """Whether the offer-verifier agent may veto offers during monitoring (default on)."""
+    return _bool("LLM_OFFER_VERIFY", True)
+
+
 def dry_run() -> bool:
     return _get("DRY_RUN").lower() in ("1", "true", "yes")
 
