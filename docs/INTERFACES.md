@@ -63,10 +63,10 @@ Quote dict: `product_name, retailer, url, price, currency, in_stock, condition, 
 2. Observe every enabled source (one source may yield many seller quotes).
 3. Re-read the task; `assign_identity_verdicts` (condition pre-filter, `url` sources `same`, product offers `same` unless the verifier downgrades; cached in `offer_verdicts`).
 4. Best = cheapest comparable, in-stock, `same`/`unverified`, trusted (if `ALERT_TRUSTED_ONLY`) quote.
-5. Deal → `try_begin_send(config_version, source_id)` → one email per episode. Otherwise reset the episode only when `_reset_blocker` returns `None`.
+5. Deal (price at or below the target, or `drop_percent` below the task's reference price) → `try_begin_send(config_version, source_id)` → one email per episode; after a drop alert the reference becomes the alerted price. Otherwise reset the episode only when `_reset_blocker` returns `None`.
 6. Next check after `frequency_minutes` (at least `MONITOR_MIN_FREQUENCY_MINUTES` for product sources).
 
-`TaskScheduler` runs once per process; `_perform_check` is the override point.
+`TaskScheduler` runs once per process; `_perform_check` is the override point. `check_due_tasks(db_path)` is the one-shot used by `main.py check-due` (Windows Task Scheduler).
 
 ## Storage — `storage.py` (schema version 1)
 
@@ -81,9 +81,10 @@ All POSTs need matching `Host`, `Origin`, `csrftoken` cookie and `X-CSRF-Token`;
 | `GET /api/tasks` | tasks with latest seller quotes, monitor status, email warning, today's API usage |
 | `GET /api/tasks/{id}`, `/history` | detail, history, events |
 | `GET /api/setup/status` | missing keys only, provider status |
-| `POST /api/find` `{description}` | run the pipeline; returns `token` + recommendations (no writes) |
+| `POST /api/find` `{description, async?}` | run the pipeline; returns `token` + recommendations, or `{job}` with `async: true` (no writes) |
+| `GET /api/find/status?job=` | stages reached so far, then the find response |
 | `POST /api/find/preview` `{token, rec_id}` | the product's sellers + `matches` at other merchants (≤ 1 extra search), suggested target (no writes) |
-| `POST /api/find/confirm` `{token, rec_id, target_price, comparison, currency, frequency_minutes, extra_ids}` | creates the task with the chosen listing plus selected matches (capped); idempotent per token + rec |
+| `POST /api/find/confirm` `{token, rec_id, target_price, comparison, currency, frequency_minutes, extra_ids, drop_percent}` | creates the task with the chosen listing plus selected matches (capped); idempotent per token + rec |
 | `POST /api/tasks/add` `{instruction}` or explicit fields | direct URL task |
 | `POST /api/tasks/{id}/check` `{confirm: true}` | check now (may email) |
 | `POST /api/check/due` `{confirm: true}` | check all due tasks |
