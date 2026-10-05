@@ -77,6 +77,7 @@
         <label><input type="number" id="cfTarget" step="0.01" style="width:100px"></label>
         <label><select id="cfCurrency"><option>NZD</option><option>AUD</option><option>USD</option></select></label>
         <label>Check every <input type="number" id="cfFreq" style="width:80px"> min</label>
+        <label>or on a drop of <input type="number" id="cfDrop" min="1" max="90" step="1" style="width:60px" placeholder="off"> %</label>
       </div>
       <p class="muted" id="previewNote"></p>
       <div class="row">
@@ -98,6 +99,7 @@
       <label><select id="addCurrency"><option>NZD</option><option>AUD</option><option>USD</option></select></label>
       <label><select id="addComparison"><option value="lte">at or below (≤)</option><option value="lt">below (&lt;)</option></select></label>
       <label>Every (min) <input type="number" id="addFreq" value="1440" style="width:80px"></label>
+      <label>Drop % <input type="number" id="addDrop" min="1" max="90" style="width:60px" placeholder="off"></label>
       <button onclick="doAddByUrl()">Add task</button>
     </div>
     <p class="muted">The page is read through Firecrawl, Tavily or Scrape.do and an AI price extractor at each check.</p>
@@ -131,6 +133,7 @@
       <label>Target <input type="number" id="newPrice" step="0.01" style="width:100px"></label>
       <label><select id="newComparison"><option value="lte">at or below (≤)</option><option value="lt">below (&lt;)</option></select></label>
       <label>Every (min) <input type="number" id="newFreq" style="width:80px"></label>
+      <label>Drop % <input type="number" id="newDrop" min="0" max="90" style="width:60px" placeholder="off"></label>
       <button onclick="doModify()">Apply</button>
     </div>
     <h3>Price history (newest first)</h3>
@@ -331,7 +334,7 @@ async function doConfirm() {
     const data = await post('/api/find/confirm', {
       token: findToken, rec_id: currentRec.id, target_price: $('cfTarget').value,
       currency: $('cfCurrency').value, comparison: $('cfComparison').value, frequency_minutes: $('cfFreq').value,
-      extra_ids: selectedMatchIds(),
+      extra_ids: selectedMatchIds(), drop_percent: $('cfDrop').value,
     });
     $('confirmStatus').textContent = data.duplicate ? 'Task ' + data.created + ' already exists.' : 'Created task ' + data.created + '.';
     loadTasks();
@@ -343,6 +346,7 @@ async function doAddByUrl() {
   const data = await post('/api/tasks/add', {
     url: $('addUrl').value.trim(), product_name: $('addName').value.trim(), target_price: $('addPrice').value,
     currency: $('addCurrency').value, comparison: $('addComparison').value, frequency_minutes: $('addFreq').value,
+    drop_percent: $('addDrop').value,
   });
   if (data.created) { $('addUrl').value = ''; $('addName').value = ''; loadTasks(); }
 }
@@ -366,7 +370,8 @@ async function loadTasks() {
     const tr = el('tr');
     tr.appendChild(el('td', t.id));
     tr.appendChild(el('td', t.product_name));
-    tr.appendChild(el('td', (t.comparison === 'lt' ? '< ' : '≤ ') + t.target_price + ' ' + t.currency));
+    tr.appendChild(el('td', (t.comparison === 'lt' ? '< ' : '≤ ') + t.target_price + ' ' + t.currency
+      + (t.drop_percent ? ' or −' + t.drop_percent + '%' : '')));
     tr.appendChild(el('td', bestLatest(t)));
     tr.appendChild(el('td', t.status, t.status === 'active' ? 'ok' : 'muted'));
     const actions = el('td', null, 'row');
@@ -428,6 +433,7 @@ async function openDetail(id) {
     box.appendChild(div);
   }
   $('newPrice').value = t.target_price; $('newComparison').value = t.comparison; $('newFreq').value = t.frequency_minutes;
+  $('newDrop').value = t.drop_percent || '';
   const hist = $('historyRows'); clear(hist);
   for (const q of t.history) {
     const tr = el('tr');
@@ -447,6 +453,7 @@ async function doModify() {
   if (!currentDetailId) return;
   await post('/api/tasks/' + currentDetailId + '/modify', {
     target_price: $('newPrice').value, comparison: $('newComparison').value, frequency_minutes: $('newFreq').value,
+    drop_percent: $('newDrop').value === '0' ? '' : $('newDrop').value,
   });
   openDetail(currentDetailId); loadTasks();
 }

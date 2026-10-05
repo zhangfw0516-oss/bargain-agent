@@ -405,5 +405,32 @@ class TestCheckDue(DbCase):
         self.assertEqual(results[1]["error"], "RuntimeError: boom")
 
 
+class TestDropPercent(DbCase):
+    def test_alerts_on_each_new_drop_from_the_reference(self):
+        task = self.product_task(target="100.00")
+        storage.update_task_conditions(task["id"], drop_percent="10", db_path=self.db)
+        prices = ["220.00", "200.00", "198.00", "198.00", "178.00"]
+        fake = FakeOffers(*[[offer("JB Hi-Fi", p)] for p in prices])
+        sent, reasons = [], []
+        for _ in prices:
+            fresh = storage.get_task(task["id"], db_path=self.db)
+            result, _ = self.check(fresh, self.observer(fake), sent=sent)
+            reasons.append(result.get("deal_reason"))
+        # 220 sets the reference; 200 is only 9% lower; 198 is 10% -> alert (reference 198);
+        # 198 again is no new drop (episode resets); 178 is 10.1% below 198 -> second alert.
+        self.assertEqual(reasons, [None, None, "drop", None, "drop"])
+        self.assertEqual([q["price"] for q in sent], ["198.00", "178.00"])
+        self.assertEqual(storage.get_task(task["id"], db_path=self.db)["reference_price"], "178.00")
+
+    def test_threshold_still_works_and_clearing_resets(self):
+        task = self.product_task(target="230.00")
+        storage.update_task_conditions(task["id"], drop_percent="10", db_path=self.db)
+        result, sent = self.check(storage.get_task(task["id"], db_path=self.db), self.observer(FakeOffers([offer("JB Hi-Fi", "219.00")])))
+        self.assertEqual((result["deal_reason"], len(sent)), ("threshold", 1))
+        storage.update_task_conditions(task["id"], drop_percent="", db_path=self.db)
+        fresh = storage.get_task(task["id"], db_path=self.db)
+        self.assertEqual((fresh["drop_percent"], fresh["reference_price"]), (None, None))
+
+
 if __name__ == "__main__":
     unittest.main()

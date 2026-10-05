@@ -127,6 +127,29 @@ def is_deal(task: dict[str, Any], quote: dict[str, Any]) -> bool:
     return False
 
 
+def drop_deal(task: dict[str, Any], quote: dict[str, Any]) -> bool:
+    """True when the quote is ``drop_percent`` below the task's reference price."""
+    percent, reference = task.get("drop_percent"), task.get("reference_price")
+    if not percent or not reference or not _is_comparable_quote(task, quote) or quote.get("in_stock") is not True:
+        return False
+    try:
+        limit = Decimal(reference) * (Decimal(100) - Decimal(percent)) / Decimal(100)
+        return Decimal(quote["price"]) <= limit
+    except Exception:
+        return False
+
+
+def deal_reason(task: dict[str, Any], quote: dict[str, Any] | None) -> str | None:
+    """``"threshold"``, ``"drop"`` or None for the best buyable quote."""
+    if quote is None:
+        return None
+    if is_deal(task, quote):
+        return "threshold"
+    if drop_deal(task, quote):
+        return "drop"
+    return None
+
+
 def task_identity(task: dict[str, Any]) -> dict[str, Any] | None:
     """The product identity stored when the task was confirmed (title, constraints)."""
     raw = task.get("identity_json")
@@ -564,8 +587,14 @@ def check_task(
             ],
         }
 
-        if best is not None and is_deal(fresh, best):
+        if best is not None and fresh.get("drop_percent") and not fresh.get("reference_price"):
+            # First comparable check of a drop-percent task: remember where it started.
+            storage.set_reference_price(task_id, best.get("price"), db_path=db_path)
+            fresh["reference_price"] = best.get("price")
+        reason = deal_reason(fresh, best)
+        if reason is not None:
             result["is_deal"] = True
+            result["deal_reason"] = reason
             result["chosen_retailer"] = best.get("retailer")
             result["chosen_price"] = best.get("price")
             if should_abort is not None and should_abort():
@@ -597,10 +626,15 @@ def check_task(
                         # every other source; silence would imply they were fine.
                         notification_quote = dict(best)
                         notification_quote["other_sources"] = _other_source_report(best, observations)
+                        notification_quote["deal_reason"] = reason
+                        notification_quote["reference_price"] = fresh.get("reference_price")
                         notification = _send_event_notification(
                             active_event, fresh, notification_quote, send_fn, max_retries, db_path=db_path
                         )
                         result["notified"] = notification.get("notified", False)
+                        if result["notified"] and fresh.get("drop_percent"):
+                            # The next drop is measured from the price just reported.
+                            storage.set_reference_price(task_id, best.get("price"), db_path=db_path)
                         result["event_id"] = notification.get("event_id")
                         result["notification_error"] = notification.get("error")
                         result["notification_reason"] = notification.get("reason")

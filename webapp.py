@@ -211,6 +211,19 @@ def _money(value: Any, label: str = "target price") -> str:
     return str(amount.quantize(Decimal("0.01")))
 
 
+def _percent(value: Any) -> str | None:
+    """Optional "alert on an X% drop": None/"" means off; otherwise 1–90."""
+    if value in (None, ""):
+        return None
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise WebError(400, f"Invalid drop percentage: {value!r}") from None
+    if not amount.is_finite() or not Decimal(1) <= amount <= Decimal(90):
+        raise WebError(400, "drop_percent must be between 1 and 90.")
+    return format(amount.normalize(), "f")
+
+
 def _frequency(value: Any, *, product_source: bool) -> int:
     try:
         minutes = int(value)
@@ -294,6 +307,8 @@ def _task_summary(task: dict[str, Any], db_path: Path) -> dict[str, Any]:
         "currency": task["currency"],
         "comparison": task["comparison"],
         "frequency_minutes": task["frequency_minutes"],
+        "drop_percent": task.get("drop_percent"),
+        "reference_price": task.get("reference_price"),
         "status": task["status"],
         "next_check_at": task["next_check_at"],
         "last_check_at": task["last_check_at"],
@@ -481,6 +496,7 @@ def api_find_confirm(state: AppState, body: dict[str, Any]) -> dict[str, Any]:
     currency = _choice(str(body.get("currency") or need.get("currency") or rec.get("currency") or "").upper(),
                        ("NZD", "AUD", "USD"), "currency")
     frequency = _frequency(body.get("frequency_minutes") or 1440, product_source=product_source)
+    drop_percent = _percent(body.get("drop_percent"))
     email = _require_email(state)
     extra_ids = body.get("extra_ids") or []
     if not isinstance(extra_ids, list) or not all(isinstance(i, str) for i in extra_ids):
@@ -510,6 +526,7 @@ def api_find_confirm(state: AppState, body: dict[str, Any]) -> dict[str, Any]:
             "currency": currency,
             "comparison": comparison,
             "frequency_minutes": frequency,
+            "drop_percent": drop_percent,
             "condition": need.get("condition"),
             "notify_email": email,
             "status": "active",
@@ -556,6 +573,7 @@ def api_add_task(state: AppState, body: dict[str, Any]) -> dict[str, Any]:
         "currency": _choice(str(fields.get("currency") or "").upper(), ("NZD", "AUD", "USD"), "currency"),
         "comparison": _choice(fields.get("comparison"), ("lt", "lte"), "comparison", "lte"),
         "frequency_minutes": _frequency(fields.get("frequency_minutes") or 1440, product_source=False),
+        "drop_percent": _percent(fields.get("drop_percent")),
         "condition": fields.get("condition") if fields.get("condition") in ("new", "used", "refurbished", "any") else None,
         "notify_email": _require_email(state),
         "status": "active",
@@ -599,18 +617,21 @@ def api_modify(state: AppState, task_id: int, body: dict[str, Any]) -> dict[str,
     if storage.get_task(task_id, db_path=state.db_path) is None:
         raise WebError(404, f"Task {task_id} not found.")
     target, comparison, frequency = body.get("target_price"), body.get("comparison"), body.get("frequency_minutes")
-    if target is None and comparison is None and frequency is None:
+    drop = body.get("drop_percent")
+    if target is None and comparison is None and frequency is None and drop is None:
         raise WebError(400, "Nothing to change.")
+    if drop is not None:
+        drop = _percent(drop) or ""
     if target is not None:
         target = _money(target)
     if comparison is not None:
         comparison = _choice(comparison, ("lt", "lte"), "comparison")
     if frequency is not None:
         frequency = _frequency(frequency, product_source=_has_product_source(task_id, state.db_path))
-    threshold_changed = target is not None or comparison is not None
+    threshold_changed = target is not None or comparison is not None or drop is not None
     updated = storage.update_task_conditions(
         task_id, target_price=target, comparison=comparison, frequency_minutes=frequency,
-        db_path=state.db_path, end_episode=threshold_changed,
+        db_path=state.db_path, end_episode=threshold_changed, drop_percent=drop,
     )
     return {"updated": True, "episode_ended": threshold_changed, "task": _task_summary(updated, state.db_path),
             "email_warning": state.email_warning()}
@@ -719,6 +740,8 @@ def make_handler(state: AppState, port: int):
             if length <= 0:
                 return {}
             if length > 64 * 1024:
+                if length <= 1024 * 1024:
+                    self.rfile.read(length)  # drain so the 400 is delivered, not a reset
                 raise WebError(400, "Request body too large.")
             try:
                 data = json.loads(self.rfile.read(length).decode("utf-8"))

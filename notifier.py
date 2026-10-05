@@ -149,6 +149,8 @@ def build_deal_body(task: dict[str, Any], quote: dict[str, Any]) -> str:
         f"Product: {quote.get('product_name')}",
         f"Current price: {quote.get('currency')} {quote.get('price')}",
         f"Your threshold: {task['currency']} {task['target_price']} ({task['comparison']})",
+        *([f"Price drop: at least {task.get('drop_percent')}% below {task['currency']} {quote.get('reference_price')}"]
+          if quote.get("deal_reason") == "drop" else []),
         f"Source: {quote.get('url')}",
         f"Retailer: {quote.get('retailer')}",
         f"In stock: {quote.get('in_stock')}",

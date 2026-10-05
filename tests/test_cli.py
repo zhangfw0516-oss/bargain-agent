@@ -467,6 +467,17 @@ class TestCLI(unittest.TestCase):
         with patch("cli.scheduler.check_due_tasks", return_value=[{"task_id": 3, "error": "x"}]), patch("sys.stdout", new=io.StringIO()):
             self.assertEqual(cli.main(["--db-path", str(self.db_path), "check-due"]), 1)
 
+    def test_find_and_modify_drop_percent(self):
+        with patch("sys.stdout", new=io.StringIO()):
+            self.assertEqual(self._run_find(["--select", "1", "--yes", "--drop-percent", "15", "fitbit"]), 0)
+        tid = self._tasks()[0]["id"]
+        self.assertEqual(storage.get_task(tid, db_path=self.db_path)["drop_percent"], "15")
+        with patch("sys.stdout", new=io.StringIO()):
+            cli.main(["--db-path", str(self.db_path), "modify", str(tid), "--drop-percent", "0"])
+        self.assertIsNone(storage.get_task(tid, db_path=self.db_path)["drop_percent"])
+        with patch("sys.stderr", new=io.StringIO()):
+            self.assertEqual(cli.main(["--db-path", str(self.db_path), "modify", str(tid), "--drop-percent", "95"]), 1)
+
     def test_find_single_listing_becomes_a_url_source(self):
         with patch("sys.stdout", new=io.StringIO()):
             rc = self._run_find(["--select", "2", "--yes", "--target-price", "90", "fitbit"])

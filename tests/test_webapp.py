@@ -330,6 +330,18 @@ class TestFindFlow(WebCase):
         self.assertTrue(again["duplicate"])
         self.assertEqual(len(storage.list_tasks(db_path=self.db)), 1)
 
+    def test_drop_percent_on_confirm_and_modify(self):
+        _, data = self.create_product_task(drop_percent="10")
+        tid = data["created"]
+        self.assertEqual(data["task"]["drop_percent"], "10")
+        self.assertEqual(self.client.post(f"/api/tasks/{tid}/modify", {"drop_percent": 95})[0], 400)
+        cleared = self.client.post(f"/api/tasks/{tid}/modify", {"drop_percent": ""})[1]
+        self.assertIsNone(cleared["task"]["drop_percent"])
+        self.assertTrue(cleared["episode_ended"])
+        token = self.find()["token"]
+        self.assertEqual(self.client.post("/api/find/confirm", {"token": token, "rec_id": "e1", "target_price": "1",
+                                                                "drop_percent": "0.5"})[0], 400)
+
     def test_confirm_enforces_minimum_frequency_for_product_sources(self):
         with patch("config.monitor_min_frequency_minutes", return_value=360):
             _, data = self.create_product_task(frequency_minutes=30)

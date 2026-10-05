@@ -247,6 +247,9 @@ def cmd_find(args: argparse.Namespace) -> int:
     except (InvalidOperation, ValueError):
         print("A positive target price is required to monitor.", file=sys.stderr)
         return 2
+    if args.drop_percent is not None and not 1 <= args.drop_percent <= 90:
+        print("Error: --drop-percent must be between 1 and 90.", file=sys.stderr)
+        return 1
     currency = (need.get("currency") or rec.get("currency") or "NZD").upper()
     frequency = args.frequency_minutes or 1440
     if product_source:
@@ -264,6 +267,7 @@ def cmd_find(args: argparse.Namespace) -> int:
         "currency": currency,
         "comparison": args.comparison or "lte",
         "frequency_minutes": frequency,
+        "drop_percent": f"{args.drop_percent:g}" if args.drop_percent else None,
         "condition": need.get("condition"),
         "notify_email": email,
         "status": "active",
@@ -582,7 +586,17 @@ def cmd_modify(args: argparse.Namespace) -> int:
     ):
         args.frequency_minutes = max(args.frequency_minutes, config.monitor_min_frequency_minutes())
 
-    if new_target is None and args.comparison is None and args.frequency_minutes is None:
+    drop = None
+    if args.drop_percent is not None:
+        if args.drop_percent == 0:
+            drop = ""
+        elif not 1 <= args.drop_percent <= 90:
+            print("Error: --drop-percent must be between 1 and 90 (0 turns it off).", file=sys.stderr)
+            return 1
+        else:
+            drop = f"{args.drop_percent:g}"
+
+    if new_target is None and args.comparison is None and args.frequency_minutes is None and drop is None:
         print(
             "Error: nothing to change. Use --target-price, --comparison or --frequency-minutes.",
             file=sys.stderr,
@@ -600,7 +614,8 @@ def cmd_modify(args: argparse.Namespace) -> int:
             # events in one transaction, so an in-flight check can neither send
             # under the old conditions nor see the new threshold with the old
             # episode.
-            end_episode=new_target is not None or args.comparison is not None,
+            end_episode=new_target is not None or args.comparison is not None or drop is not None,
+            drop_percent=drop,
         )
     except (sqlite3.Error, storage.StorageError) as exc:
         print(f"Database error: {exc}", file=sys.stderr)
@@ -609,7 +624,7 @@ def cmd_modify(args: argparse.Namespace) -> int:
         print(f"Error: Task {task['id']} not found.", file=sys.stderr)
         return 1
 
-    threshold_changed = new_target is not None or args.comparison is not None
+    threshold_changed = new_target is not None or args.comparison is not None or drop is not None
     if threshold_changed:
         print(
             f"Ended the active notification episode for task {task['id']}; "
@@ -705,6 +720,8 @@ def build_parser() -> argparse.ArgumentParser:
     find_parser.add_argument("--target-price", type=str, default=None, help="Alert threshold (default: the stated budget).")
     find_parser.add_argument("--comparison", type=str, default=None, choices=["lt", "lte"])
     find_parser.add_argument("--frequency-minutes", type=int, default=None, help="Check interval (default 1440).")
+    find_parser.add_argument("--drop-percent", type=float, default=None,
+                             help="Also alert when the best price falls this many percent (1-90) below the reference.")
     find_parser.add_argument("--no-matches", action="store_true", default=False,
                              help="Watch only the chosen listing, not the same product at other merchants.")
     find_parser.add_argument("--yes", action="store_true", default=False, help="Skip the confirmation prompt.")
@@ -737,6 +754,8 @@ def build_parser() -> argparse.ArgumentParser:
     modify_parser.add_argument("--target-price", type=str, default=None)
     modify_parser.add_argument("--comparison", type=str, default=None, choices=["lt", "lte"])
     modify_parser.add_argument("--frequency-minutes", type=int, default=None)
+    modify_parser.add_argument("--drop-percent", type=float, default=None,
+                               help="Alert on this percentage drop (0 turns it off).")
     modify_parser.set_defaults(func=cmd_modify)
 
     for name, handler in [("pause", cmd_pause), ("resume", cmd_resume), ("stop", cmd_stop), ("check", cmd_check)]:

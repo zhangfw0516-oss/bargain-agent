@@ -202,6 +202,9 @@ def _migrate_v1(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "quotes", "identity_verdict", "identity_verdict TEXT")
     _ensure_column(conn, "quotes", "check_run_id", "check_run_id TEXT")
     _ensure_column(conn, "quotes", "trusted", "trusted INTEGER")
+    # Optional "alert on an X% drop" trigger and the price it is measured from.
+    _ensure_column(conn, "tasks", "drop_percent", "drop_percent TEXT")
+    _ensure_column(conn, "tasks", "reference_price", "reference_price TEXT")
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS offer_verdicts (
@@ -343,8 +346,8 @@ def create_task_with_sources(
             INSERT INTO tasks
             (created_at, updated_at, status, product_name, url, target_price, currency,
              comparison, frequency_minutes, condition, notify_email, next_check_at,
-             identity_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             identity_json, drop_percent)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 now,
@@ -360,6 +363,7 @@ def create_task_with_sources(
                 task["notify_email"],
                 task.get("next_check_at") or now,
                 identity_json,
+                task.get("drop_percent"),
             ),
         )
         task_id = int(cursor.lastrowid)
@@ -423,6 +427,7 @@ def update_task_conditions(
     frequency_minutes: int | None = None,
     db_path: Path | None = None,
     end_episode: bool = False,
+    drop_percent: str | None = None,
 ) -> dict[str, Any] | None:
     """Change a task's threshold, comparison or frequency.
 
@@ -437,7 +442,12 @@ def update_task_conditions(
     """
     sets: list[str] = []
     params: list[Any] = []
-    threshold_changed = target_price is not None or comparison is not None
+    threshold_changed = target_price is not None or comparison is not None or drop_percent is not None
+    if drop_percent is not None:
+        # "" clears the drop trigger; a new value restarts it from the next check's price.
+        sets.append("drop_percent = ?")
+        params.append(drop_percent or None)
+        sets.append("reference_price = NULL")
     if target_price is not None:
         sets.append("target_price = ?")
         params.append(target_price)
@@ -465,6 +475,12 @@ def update_task_conditions(
             )
         conn.execute(f"UPDATE tasks SET {', '.join(sets)} WHERE id = ?", tuple(params))
     return get_task(task_id, db_path=db_path)
+
+
+def set_reference_price(task_id: int, price: str | None, db_path: Path | None = None) -> None:
+    """The price an "X% drop" is measured from (first check, then each alert)."""
+    with _transaction(db_path) as conn:
+        conn.execute("UPDATE tasks SET reference_price = ?, updated_at = ? WHERE id = ?", (price, _now(), task_id))
 
 
 def update_last_check(task_id: int, quote_id: int | None, db_path: Path | None = None) -> None:
