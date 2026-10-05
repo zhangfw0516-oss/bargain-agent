@@ -581,9 +581,7 @@ def api_check(state: AppState, task_id: int, body: dict[str, Any] | None = None)
 
 def api_check_due(state: AppState, body: dict[str, Any] | None = None) -> dict[str, Any]:
     _require_confirm(body, "Running due checks")
-    due = storage._fetchall(
-        state.db_path, "SELECT * FROM tasks WHERE status = 'active' AND next_check_at <= ? ORDER BY id", (_now_iso(),)
-    )
+    due = scheduler.due_tasks(state.db_path)
     results = [{"task_id": t["id"], **api_check(state, t["id"], {"confirm": True})} for t in due]
     return {"checked": len(results), "results": results, "email_warning": state.email_warning()}
 

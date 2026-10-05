@@ -453,6 +453,20 @@ class TestCLI(unittest.TestCase):
             self._run_find(["--select", "1", "--yes", "--no-matches", "fitbit"], result={**self.FIND_RESULT, "evidence": evidence})
         self.assertEqual(len(storage.list_task_sources(self._tasks()[0]["id"], db_path=self.db_path)), 1)
 
+    def test_check_due_prints_and_logs_a_summary(self):
+        log = self.db_path.with_suffix(".log")
+        results = [{"task_id": 1, "is_deal": True, "notified": True, "chosen_retailer": "PB Tech", "chosen_price": "198.00",
+                    "sources_checked": 2, "sources_failed": 0},
+                   {"task_id": 2, "skipped": True, "reason": "lock_held"}]
+        with patch("cli.scheduler.check_due_tasks", return_value=results), patch("sys.stdout", new=io.StringIO()) as stdout:
+            rc = cli.main(["--db-path", str(self.db_path), "check-due", "--log", str(log)])
+        self.assertEqual(rc, 0)
+        self.assertIn("task 1: deal PB Tech 198.00, email sent (2 source(s))", stdout.getvalue())
+        self.assertIn("task 2: skipped (lock_held)", log.read_text(encoding="utf-8"))
+        log.unlink()
+        with patch("cli.scheduler.check_due_tasks", return_value=[{"task_id": 3, "error": "x"}]), patch("sys.stdout", new=io.StringIO()):
+            self.assertEqual(cli.main(["--db-path", str(self.db_path), "check-due"]), 1)
+
     def test_find_single_listing_becomes_a_url_source(self):
         with patch("sys.stdout", new=io.StringIO()):
             rc = self._run_find(["--select", "2", "--yes", "--target-price", "90", "fitbit"])

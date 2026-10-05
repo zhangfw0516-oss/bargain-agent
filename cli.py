@@ -637,6 +637,33 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _fmt_due_result(result: dict) -> str:
+    tid = result.get("task_id")
+    if result.get("error"):
+        return f"task {tid}: ERROR {result['error']}"
+    if result.get("skipped"):
+        return f"task {tid}: skipped ({result.get('reason')})"
+    deal = f"deal {result.get('chosen_retailer')} {result.get('chosen_price')}" if result.get("is_deal") else "no deal"
+    sent = ", email sent" if result.get("notified") else ""
+    failed = f", {result.get('sources_failed')} source(s) failed" if result.get("sources_failed") else ""
+    return f"task {tid}: {deal}{sent} ({result.get('sources_checked')} source(s){failed})"
+
+
+def cmd_check_due(args: argparse.Namespace) -> int:
+    """Check every due task once, then exit (for Windows Task Scheduler / cron)."""
+    from datetime import datetime, timezone
+
+    _init_or_error(args.db_path)
+    results = scheduler.check_due_tasks(args.db_path)
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    lines = [f"{stamp} checked {len(results)} due task(s)"] + [f"  {_fmt_due_result(r)}" for r in results]
+    print("\n".join(lines))
+    if args.log:
+        with open(args.log, "a", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+    return 1 if any(r.get("error") for r in results) else 0
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     _init_or_error(args.db_path)
     sched = scheduler.TaskScheduler(db_path=args.db_path)
@@ -729,6 +756,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--yes", action="store_true", default=False, help="Skip the confirmation prompt."
     )
     release_parser.set_defaults(func=cmd_release_send)
+
+    due_parser = sub.add_parser(
+        "check-due", help="Check every due task once and exit (schedule this with Windows Task Scheduler)."
+    )
+    due_parser.add_argument("--log", type=str, default=None, help="Append a summary to this log file.")
+    due_parser.set_defaults(func=cmd_check_due)
 
     run_parser = sub.add_parser("run", help="Run the scheduler loop.")
     run_parser.set_defaults(func=cmd_run)

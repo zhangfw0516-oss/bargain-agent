@@ -41,7 +41,17 @@ Copy-Item .env.example .env   # then fill in LLM, SERPER (and/or SERPAPI), SMTP 
 .\venv\Scripts\python.exe webapp.py --port 8765
 ```
 
-Open http://127.0.0.1:8765/. Checks and continuous monitoring send **real** emails and ask for confirmation first.
+Open http://127.0.0.1:8765/ (or double-click `start.bat`). Checks and continuous monitoring send **real** emails and ask for confirmation first.
+
+### Monitoring without keeping the window open
+
+`check-due.bat` runs `main.py check-due` once: every due task is checked, a summary is appended to `logs\check-due.log`, and it exits. Register it with Windows Task Scheduler to run every 30 minutes (each task still only checks at its own frequency):
+
+```powershell
+schtasks /Create /SC MINUTE /MO 30 /TN "BargainAgent check-due" /TR "\"$PWD\check-due.bat\""
+```
+
+Remove it with `schtasks /Delete /TN "BargainAgent check-due" /F`. The computer must be on (not asleep) at check time. It is safe to also keep the web UI's monitor running: task locks prevent double checks and duplicate emails.
 
 ### CLI
 

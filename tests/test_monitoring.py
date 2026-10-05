@@ -374,5 +374,26 @@ class TestSharedSearchMonitoring(DbCase):
         self.assertEqual(result["event_reset_reason"], "not_all_sources_comparable")
 
 
+class TestCheckDue(DbCase):
+    def test_only_due_active_tasks_are_checked_and_errors_are_isolated(self):
+        due = self.product_task()
+        later = self.product_task()
+        paused = self.product_task()
+        storage.update_next_check(later["id"], "2999-01-01T00:00:00+00:00", db_path=self.db)
+        storage.set_task_status_atomic(paused["id"], "paused", db_path=self.db)
+        failing = self.product_task()
+        seen = []
+
+        def fake_check(task, db_path=None):
+            seen.append(task["id"])
+            if task["id"] == failing["id"]:
+                raise RuntimeError("boom")
+            return {"task_id": task["id"], "is_deal": False}
+
+        results = scheduler.check_due_tasks(self.db, check=fake_check)
+        self.assertEqual(seen, [due["id"], failing["id"]])
+        self.assertEqual(results[1]["error"], "RuntimeError: boom")
+
+
 if __name__ == "__main__":
     unittest.main()

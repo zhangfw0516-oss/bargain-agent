@@ -30,3 +30,4 @@ Thumbs.db
 *.log
 *.db
 .pytest_cache/
+logs/

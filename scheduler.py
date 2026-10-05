@@ -638,6 +638,33 @@ def check_task(
         storage.release_task_lock(task_id, owner, db_path=db_path)
 
 
+def due_tasks(db_path: Path | None = None) -> list[dict[str, Any]]:
+    """Active tasks whose next check time has passed, oldest id first."""
+    return storage._fetchall(
+        db_path,
+        "SELECT * FROM tasks WHERE status = 'active' AND next_check_at <= ? ORDER BY id",
+        (_iso(_now()),),
+    )
+
+
+def check_due_tasks(db_path: Path | None = None, *, check: Callable[..., dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """Check every due task once and return the results (one-shot, no loop).
+
+    Meant for an OS scheduler (Windows Task Scheduler, cron) so monitoring does not
+    depend on a window staying open. Task locks keep it safe alongside a running
+    in-app scheduler; one failing task never stops the others.
+    """
+    run = check or check_task
+    results = []
+    for task in due_tasks(db_path):
+        try:
+            results.append(run(task, db_path=db_path))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Due check failed for task %s", task["id"])
+            results.append({"task_id": task["id"], "error": f"{type(exc).__name__}: {exc}"})
+    return results
+
+
 class TaskScheduler:
     """Single-process scheduler that loads tasks from SQLite and runs checks.
 
@@ -673,12 +700,7 @@ class TaskScheduler:
         self._started = False
 
     def _due_tasks(self) -> list[dict[str, Any]]:
-        now = _iso(_now())
-        return storage._fetchall(
-            self.db_path,
-            "SELECT * FROM tasks WHERE status = 'active' AND next_check_at <= ? ORDER BY id",
-            (now,),
-        )
+        return due_tasks(self.db_path)
 
     def _reserve(self, task_id: int) -> bool:
         """Reserve a queued slot. False if already reserved or backlog is full."""
