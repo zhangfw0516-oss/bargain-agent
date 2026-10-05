@@ -350,13 +350,23 @@ class TestSharedSearchMonitoring(DbCase):
         self.assertEqual((result["chosen_retailer"], result["chosen_price"]), ("PB Tech", "198.00"))
         self.assertEqual(len(sent), 1)
 
+    def test_missing_listing_is_found_with_a_merchant_search(self):
+        task = self.multi_task()
+        shopping = FakeShopping([listing("a", "Harvey Norman New Zealand", "220.00"), listing("c", "JB Hi-Fi", "219.00")],
+                                [listing("b", "PB Tech", "198.00")])
+        prov = SimpleNamespace(shopping=shopping, detail=None, offers=None, extractors=[])
+        result, _ = self.check(task, self.observer_for(prov))
+        self.assertEqual(shopping.queries, ["Fitbit Charge 6", "Fitbit Charge 6 PB Tech"])
+        self.assertEqual((result["sources_failed"], result["chosen_retailer"]), (0, "PB Tech"))
+
     def test_missing_listings_use_at_most_two_detail_lookups(self):
         task = self.multi_task(tokens=("ta", "tb", "tc"))
-        shopping = FakeShopping([listing("z", "Other", "100.00")])
+        shopping = FakeShopping([listing("z", "Other", "100.00")], [], [])
         detail = FakeOffers([offer("Harvey Norman", "220.00")], [offer("PB Tech", "199.00")], [offer("JB Hi-Fi", "1.00")])
         prov = SimpleNamespace(shopping=shopping, detail=detail, offers=None, extractors=[])
         result, _ = self.check(task, self.observer_for(prov))
         self.assertEqual(len(detail.refs), 2)
+        self.assertEqual(len(shopping.queries), 3)  # shared search + at most two merchant retries
         self.assertEqual(result["sources_failed"], 1)
         errors = [s["last_error"] for s in storage.list_task_sources(task["id"], db_path=self.db)]
         self.assertIn("did not appear", errors[2])

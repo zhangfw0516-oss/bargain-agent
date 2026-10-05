@@ -283,6 +283,7 @@ def _task_summary(task: dict[str, Any], db_path: Path) -> dict[str, Any]:
                 "source_kind": s.get("source_kind") or storage.SOURCE_URL,
                 "last_checked_at": s["last_checked_at"],
                 "last_error": s["last_error"],
+                "consecutive_empty": s.get("consecutive_empty") or 0,
                 "latest": latest,
             }
         )

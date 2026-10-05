@@ -414,6 +414,7 @@ async function openDetail(id) {
     head.appendChild(flag(s.enabled ? 'enabled' : 'disabled', s.enabled ? 'ok' : 'warn'));
     body.appendChild(head);
     if (s.last_error) body.appendChild(el('div', 'Last error: ' + s.last_error, 'bad'));
+    if (s.consecutive_empty > 1) body.appendChild(el('div', 'Not found in the last ' + s.consecutive_empty + ' checks.', 'warn'));
     for (const q of s.latest || []) {
       const line = el('div', (q.retailer || '?') + ': ' + money(q.price, q.currency) + (q.in_stock === false ? ' (out of stock)' : ''), 'muted');
       if (q.trusted === false) line.appendChild(flag('unverified', 'warn'));

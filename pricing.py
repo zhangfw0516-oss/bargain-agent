@@ -51,14 +51,18 @@ def _now() -> str:
 
 #: SerpApi detail lookups allowed per check for listings missing from the shared search.
 MAX_DETAIL_LOOKUPS_PER_CHECK = 2
+#: Extra "<query> <merchant>" searches allowed per check for listings still missing.
+MAX_RETRY_SEARCHES_PER_CHECK = 2
 
 
 class CheckContext:
     """Per-check state: one shared search per query, a cap on detail lookups."""
 
-    def __init__(self, max_detail_lookups: int = MAX_DETAIL_LOOKUPS_PER_CHECK):
+    def __init__(self, max_detail_lookups: int = MAX_DETAIL_LOOKUPS_PER_CHECK,
+                 max_retry_searches: int = MAX_RETRY_SEARCHES_PER_CHECK):
         self.searches: dict[str, Any] = {}
         self.detail_left = max_detail_lookups
+        self.retry_left = max_retry_searches
 
     def search(self, providers: Any, query: str) -> list:
         if query not in self.searches:
@@ -108,7 +112,9 @@ def _observe_product(source, task, *, providers, db_path, context: CheckContext)
 
     1. The task's sources share one search per check (cached in ``context``); the
        listing with this source's ``product_id`` is the merchant's current offer.
-    2. A listing missing from that search is looked up on its SerpApi product page
+       A listing missing from it gets one "<query> <merchant>" search (at most
+       ``MAX_RETRY_SEARCHES_PER_CHECK`` per check).
+    2. A listing still missing is looked up on its SerpApi product page
        (stores, shipping) — at most ``MAX_DETAIL_LOOKUPS_PER_CHECK`` per check.
     3. Without a shared search (legacy rows), the offers provider is asked directly.
     """
@@ -123,6 +129,13 @@ def _observe_product(source, task, *, providers, db_path, context: CheckContext)
         try:
             results = context.search(providers, ref.search_query)
             match = next((r for r in results if r.product_id == ref.product_id), None)
+            merchant = (source.get("retailer") or "").strip()
+            if match is None and merchant and context.retry_left > 0:
+                # Ranking moved the listing out of the shared results: one narrower
+                # search with the merchant's name usually brings it back.
+                context.retry_left -= 1
+                results = context.search(providers, f"{ref.search_query} {merchant}")
+                match = next((r for r in results if r.product_id == ref.product_id), None)
             offer = listing_offer(match) if match else None
             offers = [offer] if offer else []
         except ProviderError as exc:
