@@ -141,9 +141,25 @@ def send_email_notification(
     return {"success": False, "attempts": attempts, "error": last_error, "retryable": retryable}
 
 
+def deal_subject(task: dict[str, Any], quote: dict[str, Any]) -> str:
+    """A subject that stands out even when the sender is the recipient ("me")."""
+    name = " ".join(str(task.get("product_name") or "").split())
+    if len(name) > 60:
+        name = name[:57].rstrip() + "..."
+    price = f"{quote.get('currency')} {quote.get('price')}"
+    shop = f" @ {quote.get('retailer')}" if quote.get("retailer") else ""
+    return f"[Bargain Agent] 降价提醒：{name} — {price}{shop}"
+
+
 def build_deal_body(task: dict[str, Any], quote: dict[str, Any]) -> str:
     """Deterministic plain-text body for a deal alert (the non-LLM fallback)."""
+    headline = (
+        f"降价提醒 / Price alert: {quote.get('retailer')} 现价 {quote.get('currency')} {quote.get('price')}"
+        f"（目标 {task['currency']} {task['target_price']}）"
+    )
     lines = [
+        headline,
+        "",
         "A price match was found for your monitored item.",
         "",
         f"Product: {quote.get('product_name')}",
@@ -202,7 +218,7 @@ def notify_deal(to_email: str, task: dict[str, Any], quote: dict[str, Any]) -> d
     summary of the best offer and any failed/unknown sources. The deterministic body is
     always the fallback, so an LLM failure can never suppress the alert.
     """
-    subject = f"Price alert: {task['product_name']}"
+    subject = deal_subject(task, quote)
     body = build_deal_body(task, quote)
     if config.llm_email_summary():
         enhanced = _llm_deal_body(task, quote)

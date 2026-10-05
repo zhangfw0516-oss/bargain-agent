@@ -173,5 +173,27 @@ class TestNotifier(unittest.TestCase):
         self.assertEqual(result["attempts"], 1)
 
 
+class TestDealSubjectAndHeadline(unittest.TestCase):
+    TASK = {"product_name": "Fitbit Charge 6 Fitness Tracker", "target_price": "218.00", "currency": "NZD", "comparison": "lte"}
+    QUOTE = {"product_name": "Fitbit Charge 6", "price": "198.00", "currency": "NZD", "retailer": "PB Tech", "url": "u",
+             "in_stock": True, "fetched_at": "t"}
+
+    def test_subject_is_distinctive(self):
+        from notifier import deal_subject
+
+        self.assertEqual(deal_subject(self.TASK, self.QUOTE),
+                         "[Bargain Agent] 降价提醒：Fitbit Charge 6 Fitness Tracker — NZD 198.00 @ PB Tech")
+        long = dict(self.TASK, product_name="X" * 100)
+        self.assertLessEqual(len(deal_subject(long, self.QUOTE).split("：")[1].split(" — ")[0]), 60)
+
+    def test_body_starts_with_the_conclusion(self):
+        from notifier import build_deal_body
+
+        first = build_deal_body(self.TASK, self.QUOTE).splitlines()[0]
+        self.assertIn("PB Tech", first)
+        self.assertIn("NZD 198.00", first)
+        self.assertIn("218.00", first)
+
+
 if __name__ == "__main__":
     unittest.main()
