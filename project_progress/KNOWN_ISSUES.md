@@ -19,6 +19,9 @@ Still unverified: Tavily Extract; inbox arrival of the test email; a week-long m
 
 ## Behaviour to be aware of
 
+- Monitoring runs only while something runs it: the web UI monitor, `main.py run`, or `check-due.bat` from Windows Task Scheduler (see README). A sleeping computer misses checks; the next run catches up.
+- A drop-percent alert compares with the reference price (first check, then each alert's price); a slow decline triggers once it accumulates past the percentage.
+
 - Most Google Shopping results are one merchant's listing; multi-merchant comparison comes from same-product matching (at most `MONITOR_MAX_SOURCES`, default 5) and one shared search per check.
 - Serper results carry no shipping, store link or second-hand field (condition is read from the title); shipping appears only when SerpApi detail is available.
 - A merchant listing that drops out of the shared search is looked up on SerpApi at most twice per check; otherwise it is a source error for that check.

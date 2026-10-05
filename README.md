@@ -27,6 +27,7 @@ flowchart LR
 - **Find** is a LangGraph pipeline of AI agents (`pipeline.py`, `agents/`). Search itself is code: Google Shopping (via Serper, with SerpApi as fallback) returns structured listings with prices, so retailer sites are not scraped. Firecrawl adds candidates only when Google returns too few, and their prices must be read from the page by the price-extractor agent.
 - **Agents choose, code decides.** Agents may only pick server-assigned evidence ids; every model output is validated; budget/condition vetoes, deal thresholds, deduplication and send permits are deterministic. Every agent falls back to plain code when the model is unavailable.
 - **Multi-merchant monitoring**: when you pick a product, matching finds the same product at other merchants (rules + AI verification, at most 5, trusted ones pre-selected). Each check runs one shared Google Shopping search (Serper; SerpApi as fallback/detail) and alerts on the cheapest trusted same-product offer. A pasted product URL is read through Scrape.do, Firecrawl or Tavily (fallback chain): a single JSON-LD product offer is used directly, otherwise the price-extractor agent reads the page and its price must appear on the page.
+- **Alerts** fire when the cheapest trusted same-product offer reaches your target price, or (optional) drops a set percentage below the price at the last alert.
 - **All merchants are shown; trusted merchants trigger alerts** (`TRUSTED_MERCHANTS`, `ALERT_TRUSTED_ONLY`). Second-hand offers are rejected unless requested, and the offer-verifier agent can veto wrong models and bundles.
 - **Cost guards:** `SERPER_DAILY_MAX_CALLS`, `SERPAPI_DAILY_MAX_CALLS`, `FIND_MAX_QUERIES`, `MONITOR_MAX_SOURCES`, `MONITOR_MIN_FREQUENCY_MINUTES`.
 
@@ -65,6 +66,7 @@ Remove it with `schtasks /Delete /TN "BargainAgent check-due" /F`. The computer 
 .\venv\Scripts\python.exe main.py pause 1   # resume / stop
 .\venv\Scripts\python.exe main.py check 1   # may send an email
 .\venv\Scripts\python.exe main.py run       # scheduler loop
+.\venv\Scripts\python.exe main.py check-due # check due tasks once (for Task Scheduler)
 ```
 
 ### Tests and evaluation (offline)
