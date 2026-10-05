@@ -22,6 +22,7 @@ import logging
 import operator
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, Callable, TypedDict
@@ -237,18 +238,29 @@ def build_graph(deps: FindDeps):
 
         if deps.shopping is None:
             notes.append("Google Shopping search is unavailable (SERPAPI_API_KEY not set).")
-        for query in state.get("queries") or []:
-            if deps.shopping is None or searches >= limits.max_queries:
-                break
+        batch: list[str] = []
+        if deps.shopping is not None:
             if out_of_time(state):
                 notes.append("The search deadline was reached.")
-                break
-            searches += 1
+            else:
+                batch = (state.get("queries") or [])[: max(0, limits.max_queries - searches)]
+        searches += len(batch)
+
+        def run_search(query: str):
             try:
-                for result in deps.shopping.search(query, limit=limits.results_per_query):
-                    add(result, query)
+                return deps.shopping.search(query, limit=limits.results_per_query), None
             except ProviderError as exc:
-                notes.append(f"Search for {query!r} failed: {exc}")
+                return [], exc
+
+        # Queries run in parallel; results are merged in query order, so evidence
+        # ids stay deterministic.
+        with ThreadPoolExecutor(max_workers=max(1, len(batch))) as pool:
+            outcomes = list(pool.map(run_search, batch))
+        for query, (results, error) in zip(batch, outcomes):
+            if error is not None:
+                notes.append(f"Search for {query!r} failed: {error}")
+            for result in results:
+                add(result, query)
 
         supplement_searches = state.get("supplement_searches", 0)
         if (
