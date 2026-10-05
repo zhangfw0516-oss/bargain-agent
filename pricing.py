@@ -215,7 +215,7 @@ def default_observer(db_path: Path | None = None) -> Callable[[dict[str, Any], d
 _NAME_SUFFIXES = re.compile(r"(\.co\.nz|\.com|\.nz|\bnew zealand\b|\bnz\b|\blimited\b|\bltd\b|\bonline\b|\bstore\b)", re.I)
 
 
-def _norm_name(text: str) -> str:
+def normalise_merchant(text: str) -> str:
     """'Harvey Norman New Zealand', 'MightyApe.co.nz', 'PB Tech' -> 'harveynorman', 'mightyape', 'pbtech'."""
     return re.sub(r"[^a-z0-9]", "", _NAME_SUFFIXES.sub(" ", text.casefold()))
 
@@ -229,7 +229,7 @@ def merchant_trust(merchant: str | None, link: str | None = None, trusted: list[
     """True when the merchant name or the link's domain is on the trusted list."""
     entries = trusted if trusted is not None else config.trusted_merchants()
     host = host_of(link)
-    name = _norm_name(merchant or "")
+    name = normalise_merchant(merchant or "")
     for entry in entries:
         entry = entry.strip()
         if not entry:
@@ -238,9 +238,9 @@ def merchant_trust(merchant: str | None, link: str | None = None, trusted: list[
             domain = entry.lower().removeprefix("www.")
             if host and (host == domain or host.endswith("." + domain)):
                 return True
-            if name and name == _norm_name(entry):
+            if name and name == normalise_merchant(entry):
                 return True
-        elif name and name == _norm_name(entry):
+        elif name and name == normalise_merchant(entry):
             return True
     return False
 

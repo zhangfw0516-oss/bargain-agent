@@ -22,7 +22,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
 from agents.offer_verifier import SAME, UNVERIFIED
-from pricing import _norm_name, merchant_trust
+from pricing import normalise_merchant, merchant_trust
 
 #: Words that describe a category or colour, not a specific product.
 GENERIC = {
@@ -68,7 +68,7 @@ def rule_candidates(chosen: dict[str, Any], pool: list[dict[str, Any]], need: di
     brand, digits = key_tokens(chosen.get("title") or "")
     base = _price(chosen.get("price"))
     wanted = need.get("condition")
-    chosen_merchant = _norm_name(chosen.get("merchant") or "")
+    chosen_merchant = normalise_merchant(chosen.get("merchant") or "")
     best: dict[str, dict[str, Any]] = {}
     for item in pool:
         if not item.get("product_id") or item.get("product_id") == chosen.get("product_id"):
@@ -87,7 +87,7 @@ def rule_candidates(chosen: dict[str, Any], pool: list[dict[str, Any]], need: di
             continue
         if not digits.issubset(words):
             continue
-        merchant = _norm_name(item.get("merchant") or "")
+        merchant = normalise_merchant(item.get("merchant") or "")
         if not merchant or merchant == chosen_merchant:
             continue
         if merchant not in best or price < _price(best[merchant]["price"]):

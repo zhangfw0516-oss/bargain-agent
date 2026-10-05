@@ -23,7 +23,9 @@ from typing import Any
 
 from agents import price_extractor
 from matching import key_tokens, tokens
-from pricing import _norm_name, merchant_trust
+import config
+import storage
+from pricing import merchant_trust, normalise_merchant, quota_guard
 from sources.base import PageText, ProductRef, ProviderError
 from sources.firecrawl import Firecrawl
 from sources.scrapedo import ScrapeDo
@@ -39,6 +41,13 @@ QUERIES = [
 ]
 
 
+def _guard():
+    """Count calls in the app database and honour the same daily caps as the app."""
+    db = config.database_path()
+    storage.init_db(db)
+    return quota_guard(db)
+
+
 def plan(n: int) -> dict[str, int]:
     return {"queries": n, "serpapi_calls": 2 * n, "firecrawl_pages_max": n, "scrapedo_pages_max": n}
 
@@ -52,9 +61,9 @@ def _pick(results) -> Any:
 
 
 def _store_link(offers, merchant: str) -> tuple[str | None, str | None]:
-    want = _norm_name(merchant or "")
+    want = normalise_merchant(merchant or "")
     for o in offers:
-        if o.link and _norm_name(o.merchant) == want:
+        if o.link and normalise_merchant(o.merchant) == want:
             return o.link, o.price
     first = next((o for o in offers if o.link), None)
     return (first.link, first.price) if first else (None, None)
@@ -75,7 +84,9 @@ def _read_page(url: str, firecrawl: Firecrawl, scrapedo: ScrapeDo) -> tuple[dict
 
 
 def collect(queries: list[str]) -> dict[str, Any]:
-    serp, firecrawl, scrapedo = SerpApi(), Firecrawl(), ScrapeDo()
+    guard = _guard()
+    serp = SerpApi(before_call=guard)
+    firecrawl, scrapedo = Firecrawl(before_call=guard), ScrapeDo(before_call=guard)
     rows = []
     for query in queries:
         row: dict[str, Any] = {"query": query}
@@ -119,7 +130,8 @@ def _compare(row: dict[str, Any], data: dict[str, Any] | None, reader: str, erro
 def recheck(path: Path) -> dict[str, Any]:
     """Re-read the merchant pages of a saved run (no SerpApi calls)."""
     previous = json.loads(path.read_text(encoding="utf-8"))
-    firecrawl, scrapedo = Firecrawl(), ScrapeDo()
+    guard = _guard()
+    firecrawl, scrapedo = Firecrawl(before_call=guard), ScrapeDo(before_call=guard)
     rows = previous["rows"]
     for row in rows:
         if not row.get("store_link") or not row.get("google_price"):

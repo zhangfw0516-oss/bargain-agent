@@ -409,7 +409,7 @@ def _matches_for(state: AppState, entry: dict[str, Any], rec: dict[str, Any], ne
         known = {e.get("product_id") for e in pool}
         for i, result in enumerate(extra, start=1):
             if result.product_id and result.product_id not in known:
-                pool.append(pipeline._evidence_from(result, eid=f"x{i}", query=query))
+                pool.append(pipeline.evidence_from(result, eid=f"x{i}", query=query))
     found = matching.find_same_product(rec, pool, need, verifier=state.match_verifier(),
                                        max_sources=config.monitor_max_sources())
     entry["matches"][rec["id"]] = found

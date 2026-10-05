@@ -102,7 +102,7 @@ class FindState(TypedDict, total=False):
 # --------------------------------------------------------------------------- evidence
 
 
-def _evidence_from(result: ShoppingResult, *, eid: str, query: str) -> dict[str, Any]:
+def evidence_from(result: ShoppingResult, *, eid: str, query: str) -> dict[str, Any]:
     merchant = result.merchant or (host_of(result.link) or None)
     return {
         "id": eid,
@@ -225,7 +225,7 @@ def build_graph(deps: FindDeps):
 
         def add(result: ShoppingResult, query: str) -> dict[str, Any] | None:
             eid = f"e{len(existing) + len(new) + 1}"
-            item = _evidence_from(result, eid=eid, query=query)
+            item = evidence_from(result, eid=eid, query=query)
             key = _dedupe_key(item)
             if key in keys:
                 return None
