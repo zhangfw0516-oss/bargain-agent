@@ -247,6 +247,22 @@ class TestFindFlow(WebCase):
         self.assertEqual(data["stages"]["select"], "ok")
         self.assertEqual(storage.list_tasks(db_path=self.db), [])
 
+    def test_async_find_job_reports_status_then_result(self):
+        import time
+
+        status, started = self.client.post("/api/find", {"description": "fitbit under 250", "async": True})
+        self.assertEqual(status, 200)
+        for _ in range(50):
+            state = self.client.get(f"/api/find/status?job={started['job']}")[1]
+            if state["status"] != "running":
+                break
+            time.sleep(0.05)
+        self.assertEqual(state["status"], "done")
+        self.assertEqual([r["id"] for r in state["response"]["recommendations"]], ["e1", "e2"])
+        preview = self.client.post("/api/find/preview", {"token": state["response"]["token"], "rec_id": "e1"})
+        self.assertEqual(preview[0], 200)
+        self.assertEqual(self.client.get("/api/find/status?job=nope")[0], 404)
+
     def test_find_validation(self):
         self.assertEqual(self.client.post("/api/find", {"description": "  "})[0], 400)
         self.assertEqual(self.client.post("/api/find", {"description": "x" * 401})[0], 400)

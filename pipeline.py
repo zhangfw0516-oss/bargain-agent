@@ -74,6 +74,8 @@ class FindDeps:
     clock: Callable[[], float] = time.monotonic
     #: Per-agent client/model override; tests return a FakeLLM here.
     llm_for: Callable[[str], LLMOptions] = lambda _agent: LLMOptions()
+    #: Called with a node name as each stage starts (progress display).
+    on_stage: Callable[[str], None] = lambda _stage: None
 
 
 def _merge(left: dict, right: dict) -> dict:
@@ -326,11 +328,21 @@ def build_graph(deps: FindDeps):
         return {"recommendations": recs, "stages": {"describe": result.status}, "notes": [result.note] if result.note else []}
 
     graph = StateGraph(FindState)
-    graph.add_node("understand", understand_node)
-    graph.add_node("rewrite", rewrite_node)
-    graph.add_node("search", search_node)
-    graph.add_node("select", select_node)
-    graph.add_node("describe", describe_node)
+    def staged(name: str, node: Callable[[FindState], dict[str, Any]]):
+        def run(state: FindState) -> dict[str, Any]:
+            try:
+                deps.on_stage(name)
+            except Exception:  # noqa: BLE001 - progress reporting must never break a find
+                logger.debug("on_stage callback failed", exc_info=True)
+            return node(state)
+
+        return run
+
+    graph.add_node("understand", staged("understand", understand_node))
+    graph.add_node("rewrite", staged("rewrite", rewrite_node))
+    graph.add_node("search", staged("search", search_node))
+    graph.add_node("select", staged("select", select_node))
+    graph.add_node("describe", staged("describe", describe_node))
     graph.add_edge(START, "understand")
     graph.add_edge("understand", "rewrite")
     graph.add_edge("rewrite", "search")

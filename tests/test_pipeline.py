@@ -67,6 +67,25 @@ class TestRunFind(unittest.TestCase):
         self.assertEqual(out["stages"], {"understand": "ok", "rewrite": "ok", "search_1": "ok", "select": "ok", "describe": "ok"})
         self.assertEqual(shop.queries, ["fitbit charge 6", "fitness tracker"])
 
+    def test_stage_callback_reports_progress_including_retries(self):
+        shop = FakeSearch("serpapi", [result("Case", "9", "20.00")], [result("Fitbit Charge 6", "111", "229.00")])
+        llm = FakeLLM({
+            "understand.md": {"category": "fitness tracker"},
+            "rewrite.md": [{"queries": ["charge 6"]}, {"queries": ["fitbit charge 6"]}],
+            "select.md": [{"selected": []}, {"selected": ["e2"]}],
+            "describe.md": {"summaries": {"e2": "ok"}},
+        })
+        d, _ = deps(shop, llm=llm)
+        seen = []
+        d.on_stage = seen.append
+        run_find("fitbit", deps=d)
+        self.assertEqual(seen, ["understand", "rewrite", "search", "select", "rewrite", "search", "select", "describe"])
+
+    def test_a_failing_stage_callback_does_not_break_the_find(self):
+        d, _ = deps(FakeSearch("serpapi", [result("Fitbit Charge 6", "111", "229.00")]))
+        d.on_stage = lambda _s: (_ for _ in ()).throw(RuntimeError("ui gone"))
+        self.assertEqual(run_find("fitbit", deps=d)["recommendations"][0]["title"], "Fitbit Charge 6")
+
     def test_without_llm_everything_falls_back_but_still_recommends(self):
         shop = FakeSearch("serpapi", [result("Fitbit Charge 6", "111", "229.00"), result("Old", "333", "99.00", condition="refurbished")])
         d, _ = deps(shop)

@@ -35,7 +35,7 @@ from decimal import Decimal, InvalidOperation
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import config
 import config_setup
@@ -88,6 +88,8 @@ class AppState:
         self._lock = threading.Lock()
         self._finds: dict[str, dict[str, Any]] = {}
         self._finds_order: list[str] = []
+        self._jobs: dict[str, dict[str, Any]] = {}
+        self._jobs_order: list[str] = []
         self.monitor: dict[str, Any] = {"status": "not_started", "scheduler": None, "thread": None, "started_at": None}
 
     # -- collaborators ---------------------------------------------------------
@@ -96,14 +98,42 @@ class AppState:
 
         return build_providers(pricing.quota_guard(self.db_path))
 
-    def run_find(self, description: str) -> dict[str, Any]:
+    def run_find(self, description: str, on_stage: Callable[[str], None] | None = None) -> dict[str, Any]:
         if self.services.find is not None:
             return self.services.find(description)
         providers = self._providers()
         deps = pipeline.FindDeps(
-            shopping=providers.shopping, supplement=providers.supplement, limits=pipeline.FindLimits.from_config()
+            shopping=providers.shopping, supplement=providers.supplement, limits=pipeline.FindLimits.from_config(),
+            on_stage=on_stage or (lambda _stage: None),
         )
         return pipeline.run_find(description, deps=deps)
+
+    # -- background finds ------------------------------------------------------
+    def start_find_job(self, description: str) -> str:
+        job_id = secrets.token_urlsafe(12)
+        job: dict[str, Any] = {"status": "running", "stages": [], "response": None, "error": None}
+        with self._lock:
+            self._jobs[job_id] = job
+            self._jobs_order.append(job_id)
+            while len(self._jobs_order) > MAX_STORED_RESULTS:
+                self._jobs.pop(self._jobs_order.pop(0), None)
+
+        def work() -> None:
+            try:
+                result = self.run_find(description, on_stage=job["stages"].append)
+                job["response"] = _find_response(self, result)
+                job["status"] = "done"
+            except config.ConfigError as exc:
+                job.update(status="error", error=f"Configuration problem: {exc}")
+            except Exception as exc:  # noqa: BLE001
+                job.update(status="error", error=f"Find failed: {type(exc).__name__}")
+
+        threading.Thread(target=work, daemon=True, name="bargain-agent-find").start()
+        return job_id
+
+    def find_job(self, job_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            return self._jobs.get(job_id)
 
     def product_detail(self, ref: ProductRef) -> tuple[list, ProductRef] | None:
         """Store list for a product page, or None when no detail source is configured."""
@@ -382,12 +412,26 @@ def api_find(state: AppState, body: dict[str, Any]) -> dict[str, Any]:
         raise WebError(400, "Please describe what you are looking for.")
     if len(description) > MAX_DESCRIPTION_CHARS:
         raise WebError(400, f"That description is too long; keep it under {MAX_DESCRIPTION_CHARS} characters.")
+    if body.get("async"):
+        return {"job": state.start_find_job(description)}
     try:
         result = state.run_find(description)
     except config.ConfigError as exc:
         raise WebError(400, f"Configuration problem: {exc}") from None
+    return _find_response(state, result)
+
+
+def _find_response(state: AppState, result: dict[str, Any]) -> dict[str, Any]:
     token = state.store_find(result)
-    return {"token": token, **{k: result.get(k) for k in ("status", "description", "need", "queries", "recommendations", "stages", "notes", "usage")}}
+    keys = ("status", "description", "need", "queries", "recommendations", "stages", "notes", "usage")
+    return {"token": token, **{k: result.get(k) for k in keys}}
+
+
+def api_find_status(state: AppState, job_id: str) -> dict[str, Any]:
+    job = state.find_job(job_id)
+    if job is None:
+        raise WebError(404, "This find has expired; please run Find again.")
+    return {"status": job["status"], "stages": list(job["stages"]), "response": job["response"], "error": job["error"]}
 
 
 def _recommendation(state: AppState, body: dict[str, Any]) -> tuple[str, dict[str, Any], dict[str, Any]]:
@@ -781,6 +825,8 @@ def make_handler(state: AppState, port: int):
                     self._send_json(200, {"csrf_token": state.csrf_token}, set_csrf=True)
                 elif path == "/api/tasks":
                     self._send_json(200, api_tasks(state))
+                elif path == "/api/find/status":
+                    self._send_json(200, api_find_status(state, (parse_qs(urlparse(self.path).query).get("job") or [""])[0]))
                 elif path == "/api/monitor/status":
                     self._send_json(200, monitor_status(state))
                 elif path == "/api/setup/status":

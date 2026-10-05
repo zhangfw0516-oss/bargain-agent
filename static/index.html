@@ -136,6 +136,8 @@
       <label>Drop % <input type="number" id="newDrop" min="0" max="90" style="width:60px" placeholder="off"></label>
       <button onclick="doModify()">Apply</button>
     </div>
+    <h3>Price trend</h3>
+    <div id="priceChart" class="muted"></div>
     <h3>Price history (newest first)</h3>
     <table><thead><tr><th>Checked</th><th>Seller</th><th>Price</th><th>Verdict</th><th>Error</th></tr></thead><tbody id="historyRows"></tbody></table>
     <h3>Notification episodes</h3>
@@ -215,19 +217,43 @@ async function doFind() {
   const description = $('findDescription').value.trim();
   if (!description) { showError('Please describe what you are looking for.'); return; }
   $('findBtn').disabled = true;
-  $('findStatus').textContent = 'Agents working: understand → rewrite → search → select → describe…';
   clear($('findRecommendations')); clear($('findStages')); clear($('findNotes')); hidePreview();
   try {
-    const data = await post('/api/find', {description});
-    findToken = data.token;
-    renderFind(data);
-    $('findStatus').textContent = (data.recommendations || []).length + ' recommendation(s).';
+    const {job} = await post('/api/find', {description, async: true});
+    const started = Date.now();
+    let state;
+    for (;;) {
+      state = await api('/api/find/status?job=' + encodeURIComponent(job));
+      renderProgress(state.stages, Math.round((Date.now() - started) / 1000));
+      if (state.status !== 'running') break;
+      await new Promise(r => setTimeout(r, 800));
+    }
+    if (state.status === 'error') throw new Error(showError(state.error) || state.error);
+    findToken = state.response.token;
+    clear($('findStages'));
+    renderFind(state.response);
+    $('findStatus').textContent = (state.response.recommendations || []).length + ' recommendation(s).';
   } catch (e) {
     $('findStatus').textContent = '';
   } finally {
     $('findBtn').disabled = false;
     loadTasks();
   }
+}
+
+const STAGE_LABELS = {understand: 'Understanding the request', rewrite: 'Writing search queries',
+  search: 'Searching Google Shopping', select: 'Choosing products', describe: 'Writing summaries'};
+function renderProgress(stages, seconds) {
+  const order = ['understand', 'rewrite', 'search', 'select', 'describe'];
+  const box = $('findStages'); clear(box);
+  const current = stages[stages.length - 1];
+  for (const name of order) {
+    const done = stages.includes(name) && name !== current;
+    const cls = name === current ? 'warn' : (done ? 'ok' : 'muted');
+    box.appendChild(el('span', (done ? '✓ ' : name === current ? '… ' : '· ') + STAGE_LABELS[name], cls));
+  }
+  const retries = stages.filter(s => s === 'rewrite').length - 1;
+  $('findStatus').textContent = (retries > 0 ? 'Retrying with new queries · ' : '') + seconds + 's';
 }
 
 function renderFind(data) {
@@ -434,6 +460,7 @@ async function openDetail(id) {
   }
   $('newPrice').value = t.target_price; $('newComparison').value = t.comparison; $('newFreq').value = t.frequency_minutes;
   $('newDrop').value = t.drop_percent || '';
+  renderChart($('priceChart'), t.history, t.target_price);
   const hist = $('historyRows'); clear(hist);
   for (const q of t.history) {
     const tr = el('tr');
@@ -447,6 +474,48 @@ async function openDetail(id) {
     ev.appendChild(tr);
   }
   $('detailSection').classList.remove('hidden');
+}
+
+const CHART_COLOURS = ['#2b5aa7', '#d9822b', '#1c7c3c', '#b3372f', '#7b4fb0', '#0f8a8a'];
+function renderChart(box, history, target) {
+  clear(box);
+  const points = (history || []).filter(q => q.price && !q.error && q.identity_verdict !== 'different')
+    .map(q => ({t: Date.parse(q.fetched_at), p: Number(q.price), r: q.retailer || '?'}))
+    .filter(q => isFinite(q.t) && isFinite(q.p)).sort((a, b) => a.t - b.t);
+  if (points.length < 2) { box.textContent = 'The trend appears after two or more checks.'; return; }
+  const W = 640, H = 200, L = 56, R = 12, T = 12, B = 28;
+  const ns = 'http://www.w3.org/2000/svg';
+  const make = (tag, attrs) => { const n = document.createElementNS(ns, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); return n; };
+  const tMin = points[0].t, tMax = points[points.length - 1].t || tMin + 1;
+  const prices = points.map(p => p.p).concat(target ? [Number(target)] : []);
+  let pMin = Math.min(...prices), pMax = Math.max(...prices);
+  if (pMax === pMin) { pMin -= 1; pMax += 1; }
+  const x = t => L + (tMax === tMin ? 0 : (t - tMin) / (tMax - tMin)) * (W - L - R);
+  const y = p => T + (1 - (p - pMin) / (pMax - pMin)) * (H - T - B);
+  const svg = make('svg', {viewBox: `0 0 ${W} ${H}`, width: '100%', role: 'img', 'aria-label': 'Price trend by merchant'});
+  for (const v of [pMin, (pMin + pMax) / 2, pMax]) {
+    svg.appendChild(make('line', {x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: '#e7ebf0'}));
+    const label = make('text', {x: L - 6, y: y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#67707d'});
+    label.textContent = v.toFixed(0); svg.appendChild(label);
+  }
+  if (target) {
+    svg.appendChild(make('line', {x1: L, x2: W - R, y1: y(Number(target)), y2: y(Number(target)), stroke: '#b3372f', 'stroke-dasharray': '4 4'}));
+  }
+  const byMerchant = {};
+  for (const p of points) (byMerchant[p.r] = byMerchant[p.r] || []).push(p);
+  const legend = el('div', null, 'row');
+  Object.entries(byMerchant).forEach(([name, pts], i) => {
+    const colour = CHART_COLOURS[i % CHART_COLOURS.length];
+    svg.appendChild(make('polyline', {points: pts.map(p => `${x(p.t)},${y(p.p)}`).join(' '), fill: 'none', stroke: colour, 'stroke-width': 2}));
+    for (const p of pts) {
+      const dot = make('circle', {cx: x(p.t), cy: y(p.p), r: 3, fill: colour});
+      const tip = make('title', {}); tip.textContent = `${name}: ${p.p.toFixed(2)} · ${new Date(p.t).toLocaleString()}`;
+      dot.appendChild(tip); svg.appendChild(dot);
+    }
+    const key = el('span', '■ ' + name); key.style.color = colour; legend.appendChild(key);
+  });
+  if (target) { const key = el('span', '- - target ' + target); key.style.color = '#b3372f'; legend.appendChild(key); }
+  box.appendChild(svg); box.appendChild(legend);
 }
 
 async function doModify() {
