@@ -306,6 +306,24 @@ def _quote_view(q: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _best_and_insight(task: dict[str, Any], sources: list[dict[str, Any]], db_path: Path) -> dict[str, Any]:
+    """The cheapest usable latest quote and how it compares with the last 30 days."""
+    best = None
+    for source in sources:
+        if not source["enabled"]:
+            continue
+        for q in source["latest"]:
+            if not q.get("price") or q.get("error") or q.get("in_stock") is False or q.get("trusted") is False:
+                continue
+            if q.get("identity_verdict") in ("different", "needs_confirmation") or q.get("currency") != task["currency"]:
+                continue
+            if best is None or Decimal(pricing.effective_price(task, q)) < Decimal(pricing.effective_price(task, best)):
+                best = q
+    current = pricing.effective_price(task, best) if best else None
+    return {"best": best, "best_effective_price": current,
+            "insight": pricing.price_insight(task, current, db_path=db_path)}
+
+
 def _task_summary(task: dict[str, Any], db_path: Path) -> dict[str, Any]:
     sources = storage.list_task_sources(task["id"], db_path=db_path)
     out_sources = []
@@ -344,6 +362,7 @@ def _task_summary(task: dict[str, Any], db_path: Path) -> dict[str, Any]:
         "last_check_at": task["last_check_at"],
         "notify_email": task["notify_email"],
         "sources": out_sources,
+        **_best_and_insight(task, out_sources, db_path),
     }
 
 

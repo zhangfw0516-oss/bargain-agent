@@ -151,6 +151,22 @@ def deal_subject(task: dict[str, Any], quote: dict[str, Any]) -> str:
     return f"[Bargain Agent] 降价提醒：{name} — {price}{shop}"
 
 
+def insight_lines(task: dict[str, Any], quote: dict[str, Any]) -> list[str]:
+    """One line of price history context, when there is enough history."""
+    insight = quote.get("insight")
+    if not insight:
+        return []
+    currency = task.get("currency")
+    if insight.get("is_lowest"):
+        verdict = f"Lowest price in the last {insight['days']} days"
+    elif insight.get("pct_vs_average") is not None and insight["pct_vs_average"] < 0:
+        verdict = f"{abs(insight['pct_vs_average']):g}% below the {insight['days']}-day average"
+    else:
+        verdict = f"Not below the {insight['days']}-day average"
+    return [f"Price history: {verdict} (low {currency} {insight['lowest']}, average {currency} "
+            f"{insight['average']}, {insight['checks']} checks)."]
+
+
 def build_deal_body(task: dict[str, Any], quote: dict[str, Any]) -> str:
     """Deterministic plain-text body for a deal alert (the non-LLM fallback)."""
     headline = (
@@ -167,6 +183,7 @@ def build_deal_body(task: dict[str, Any], quote: dict[str, Any]) -> str:
         f"Your threshold: {task['currency']} {task['target_price']} ({task['comparison']})",
         *([f"Price drop: at least {task.get('drop_percent')}% below {task['currency']} {quote.get('reference_price')}"]
           if quote.get("deal_reason") == "drop" else []),
+        *insight_lines(task, quote),
         f"Source: {quote.get('url')}",
         f"Retailer: {quote.get('retailer')}",
         f"In stock: {quote.get('in_stock')}",

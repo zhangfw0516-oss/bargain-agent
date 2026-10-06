@@ -432,5 +432,44 @@ class TestDropPercent(DbCase):
         self.assertEqual((fresh["drop_percent"], fresh["reference_price"]), (None, None))
 
 
+class TestPriceInsight(DbCase):
+    def seed(self, task, prices, *, days_ago=0, merchant="JB Hi-Fi", **extra):
+        from datetime import timedelta
+
+        for i, price in enumerate(prices):
+            at = (datetime.now(timezone.utc) - timedelta(days=days_ago, hours=i)).isoformat()
+            storage.save_quote(task["id"], {"price": price, "currency": "NZD", "fetched_at": at, "retailer": merchant,
+                                            "product_name": "X", "url": "u", "in_stock": True, "identity_verdict": "same",
+                                            "trusted": True, "check_run_id": f"{merchant}{days_ago}{i}", **extra}, db_path=self.db)
+
+    def test_lowest_and_average_over_the_window(self):
+        task = self.product_task()
+        self.seed(task, ["240.00", "230.00", "220.00"])
+        self.seed(task, ["100.00"], days_ago=45)                       # outside the window
+        self.seed(task, ["50.00"], merchant="Random", trusted=False)    # untrusted
+        self.seed(task, ["60.00"], merchant="Bundle", identity_verdict="different")
+        insight = pricing.price_insight(task, "210.00", db_path=self.db)
+        self.assertEqual((insight["lowest"], insight["average"], insight["checks"]), ("220.00", "230.00", 3))
+        self.assertTrue(insight["is_lowest"])
+        self.assertEqual(pricing.price_insight(task, "235.00", db_path=self.db)["pct_vs_average"], 2.2)
+        self.assertFalse(pricing.price_insight(task, "235.00", db_path=self.db)["is_lowest"])
+
+    def test_too_little_history(self):
+        task = self.product_task()
+        self.seed(task, ["240.00", "230.00"])
+        self.assertIsNone(pricing.price_insight(task, "200.00", db_path=self.db))
+        self.assertIsNone(pricing.price_insight(task, None, db_path=self.db))
+
+    def test_email_line(self):
+        import notifier
+
+        task = {"currency": "NZD"}
+        lowest = {"insight": {"days": 30, "checks": 5, "lowest": "198.00", "average": "215.00", "is_lowest": True, "pct_vs_average": -7.9}}
+        self.assertIn("Lowest price in the last 30 days", notifier.insight_lines(task, lowest)[0])
+        below = {"insight": dict(lowest["insight"], is_lowest=False)}
+        self.assertIn("7.9% below the 30-day average", notifier.insight_lines(task, below)[0])
+        self.assertEqual(notifier.insight_lines(task, {}), [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -204,6 +204,73 @@ def _observe_page(source, task, *, providers, llm_opts) -> dict[str, Any]:
     raise ObservationError("; ".join(errors) or "The page could not be read.")
 
 
+#: Fewer observations than this in the window is not enough history to judge a price.
+MIN_INSIGHT_OBSERVATIONS = 3
+
+
+def usable_history(task_id: int, *, days: int = 30, db_path: Path | None = None) -> list[dict[str, Any]]:
+    """Recent quotes that could have been alerted on: priced, same item, not untrusted."""
+    cutoff = datetime.now(timezone.utc).timestamp() - days * 86400
+    rows = []
+    for q in storage.list_quotes(task_id=task_id, limit=2000, db_path=db_path):
+        if q.get("error") or not q.get("price") or q.get("identity_verdict") in ("different", "needs_confirmation"):
+            continue
+        if q.get("trusted") == 0:
+            continue
+        try:
+            if datetime.fromisoformat(q["fetched_at"]).timestamp() < cutoff:
+                continue
+        except (TypeError, ValueError):
+            continue
+        rows.append(q)
+    return rows
+
+
+def price_insight(task: dict[str, Any], current: str | None, *, days: int = 30,
+                  db_path: Path | None = None) -> dict[str, Any] | None:
+    """How ``current`` compares with this task's last ``days`` of prices.
+
+    Uses the cheapest usable quote of each check, so several merchants per check do
+    not drag the average down. None when there is too little history.
+    """
+    if not current:
+        return None
+    from decimal import Decimal, InvalidOperation
+
+    per_check: dict[str, Decimal] = {}
+    for q in usable_history(task["id"], days=days, db_path=db_path):
+        if q.get("currency") != task.get("currency"):
+            continue
+        try:
+            price = Decimal(effective_price(task, q))
+        except (InvalidOperation, TypeError, ValueError):
+            continue
+        key = q.get("check_run_id") or q["fetched_at"]
+        per_check[key] = min(price, per_check.get(key, price))
+    if len(per_check) < MIN_INSIGHT_OBSERVATIONS:
+        return None
+    try:
+        now = Decimal(str(current))
+    except InvalidOperation:
+        return None
+    values = list(per_check.values())
+    lowest, average = min(values), sum(values) / len(values)
+    return {
+        "days": days,
+        "checks": len(values),
+        "lowest": str(lowest.quantize(Decimal("0.01"))),
+        "average": str(average.quantize(Decimal("0.01"))),
+        "is_lowest": now <= lowest,
+        "pct_vs_average": float(((now - average) / average * 100).quantize(Decimal("0.1"))) if average else None,
+    }
+
+
+def effective_price(task: dict[str, Any], quote: dict[str, Any]) -> str:
+    """The price compared against thresholds: item price, plus known shipping when the
+    task compares landed prices."""
+    return str(quote["price"])
+
+
 def default_observer(db_path: Path | None = None) -> Callable[[dict[str, Any], dict[str, Any]], list[dict[str, Any]]]:
     from sources.registry import build_providers
 

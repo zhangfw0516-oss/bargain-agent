@@ -632,6 +632,14 @@ async function doAddByUrl() {
 }
 
 // ---------------------------------------------------------------- monitors
+function insightBadge(insight) {
+  if (!insight) return null;
+  if (insight.is_lowest) return badge('Lowest in ' + insight.days + ' days', 'ok');
+  const pct = insight.pct_vs_average;
+  if (pct !== null && pct <= -3) return badge(Math.abs(pct) + '% below ' + insight.days + '-day avg', 'ok');
+  if (pct !== null && pct >= 3) return badge(pct + '% above ' + insight.days + '-day avg', 'warn');
+  return badge('Typical price', '');
+}
 function bestLatest(task) {
   let best = null;
   for (const s of task.sources) for (const q of s.latest || []) {
@@ -667,10 +675,12 @@ async function loadTasks() {
     head.appendChild(badge(label, cls));
     card.appendChild(head);
     const stats = el('div', null, 'stats');
-    const best = bestLatest(t);
+    const best = t.best || bestLatest(t);
     const s1 = el('div', null, 'stat'); s1.appendChild(el('div', 'Best now', 'label'));
     s1.appendChild(el('div', best ? money(best.price, best.currency) : '—', 'value'));
     s1.appendChild(el('div', best ? (best.retailer || '') : 'not checked yet', 'sub'));
+    const ins = insightBadge(t.insight);
+    if (ins) s1.appendChild(ins);
     const hit = best && Number(best.price) <= Number(t.target_price);
     if (hit) s1.querySelector('.value').classList.add('ok');
     const s2 = el('div', null, 'stat'); s2.appendChild(el('div', 'Alert', 'label'));
@@ -716,6 +726,9 @@ async function openDetail(id) {
   sub.appendChild(badge(label, cls));
   sub.appendChild(badge((t.comparison === 'lt' ? '< ' : '≤ ') + t.currency + ' ' + t.target_price, 'info'));
   if (t.drop_percent) sub.appendChild(badge('or −' + t.drop_percent + '%' + (t.reference_price ? ' from ' + t.reference_price : ''), 'info'));
+  const ins = insightBadge(t.insight);
+  if (ins) sub.appendChild(ins);
+  if (t.insight) sub.appendChild(el('span', t.insight.days + '-day low ' + t.currency + ' ' + t.insight.lowest + ' · avg ' + t.insight.average, 'faint'));
   sub.appendChild(el('span', 'next check ' + when(t.next_check_at) + ' · ' + t.notify_email, 'faint'));
   head.appendChild(sub);
 

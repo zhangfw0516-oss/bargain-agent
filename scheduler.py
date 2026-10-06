@@ -628,6 +628,11 @@ def check_task(
                         notification_quote["other_sources"] = _other_source_report(best, observations)
                         notification_quote["deal_reason"] = reason
                         notification_quote["reference_price"] = fresh.get("reference_price")
+                        try:
+                            notification_quote["insight"] = pricing.price_insight(
+                                fresh, pricing.effective_price(fresh, best), db_path=db_path)
+                        except Exception:  # noqa: BLE001 - context only, never blocks an alert
+                            notification_quote["insight"] = None
                         notification = _send_event_notification(
                             active_event, fresh, notification_quote, send_fn, max_retries, db_path=db_path
                         )
