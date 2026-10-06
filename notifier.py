@@ -189,8 +189,18 @@ def build_deal_body(task: dict[str, Any], quote: dict[str, Any]) -> str:
         f"In stock: {quote.get('in_stock')}",
         f"Checked at: {quote.get('fetched_at')}",
     ]
-    if quote.get("shipping_cost") is None:
+    shipping = quote.get("shipping")
+    if shipping in (None, ""):
         lines.append("Shipping cost: unknown (price does not include verified shipping).")
+    else:
+        try:
+            from decimal import Decimal
+
+            total = (Decimal(str(quote.get("price"))) + Decimal(str(shipping))).quantize(Decimal("0.01"))
+            lines.append(f"Shipping: {quote.get('currency')} {shipping} — delivered total {quote.get('currency')} {total}"
+                         + (" (compared)" if task.get("include_shipping") else ""))
+        except Exception:  # noqa: BLE001
+            lines.append(f"Shipping: {quote.get('currency')} {shipping}")
 
     # Stage C: a task can watch several shops. Report the others explicitly instead of
     # leaving the reader to assume they were all fine.

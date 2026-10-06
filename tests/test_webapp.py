@@ -358,6 +358,22 @@ class TestFindFlow(WebCase):
         self.assertEqual(self.client.post("/api/find/confirm", {"token": token, "rec_id": "e1", "target_price": "1",
                                                                 "drop_percent": "0.5"})[0], 400)
 
+    def test_include_shipping_and_merchant_shipping(self):
+        _, data = self.create_product_task(include_shipping=True)
+        tid, sid = data["created"], data["task"]["sources"][0]["id"]
+        self.assertTrue(data["task"]["include_shipping"])
+        set_ = self.client.post(f"/api/tasks/{tid}/sources/shipping", {"source_id": sid, "shipping": "6.95"})[1]
+        self.assertEqual(set_["task"]["sources"][0]["shipping_cost"], "6.95")
+        self.assertEqual(self.client.post(f"/api/tasks/{tid}/sources/shipping", {"source_id": sid, "shipping": "-1"})[0], 400)
+        self.assertEqual(self.client.post(f"/api/tasks/{tid}/sources/shipping", {"source_id": 999, "shipping": "1"})[0], 404)
+        cleared = self.client.post(f"/api/tasks/{tid}/sources/shipping", {"source_id": sid, "shipping": ""})[1]
+        self.assertIsNone(cleared["task"]["sources"][0]["shipping_cost"])
+        same = self.client.post(f"/api/tasks/{tid}/modify", {"include_shipping": True})[1]
+        self.assertFalse(same["episode_ended"])
+        off = self.client.post(f"/api/tasks/{tid}/modify", {"include_shipping": False})[1]
+        self.assertTrue(off["episode_ended"])
+        self.assertFalse(off["task"]["include_shipping"])
+
     def test_confirm_enforces_minimum_frequency_for_product_sources(self):
         with patch("config.monitor_min_frequency_minutes", return_value=360):
             _, data = self.create_product_task(frequency_minutes=30)

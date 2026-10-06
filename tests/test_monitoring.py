@@ -471,5 +471,42 @@ class TestPriceInsight(DbCase):
         self.assertEqual(notifier.insight_lines(task, {}), [])
 
 
+class TestLandedPrice(DbCase):
+    def offers(self):
+        a = offer("Noel Leeming", "200.00"); a.shipping = "30.00"
+        b = offer("JB Hi-Fi", "215.00"); b.shipping = "0.00"
+        return [a, b]
+
+    def test_item_price_by_default_and_delivered_price_when_enabled(self):
+        task = self.product_task(target="220.00")
+        result, sent = self.check(task, self.observer(FakeOffers(self.offers())))
+        self.assertEqual(result["chosen_retailer"], "Noel Leeming")  # 200 < 215 by item price
+        landed = self.product_task(target="220.00")
+        storage.update_task_conditions(landed["id"], include_shipping=True, db_path=self.db)
+        result, _ = self.check(storage.get_task(landed["id"], db_path=self.db), self.observer(FakeOffers(self.offers())))
+        self.assertEqual((result["chosen_retailer"], result["chosen_effective_price"]), ("JB Hi-Fi", "215.00"))
+        saved = storage.list_quotes(task_id=landed["id"], db_path=self.db)
+        self.assertEqual(sorted(q["shipping"] for q in saved), ["0.00", "30.00"])
+
+    def test_delivered_price_can_miss_the_target(self):
+        task = self.product_task(target="210.00")
+        storage.update_task_conditions(task["id"], include_shipping=True, db_path=self.db)
+        a = offer("Noel Leeming", "200.00"); a.shipping = "30.00"
+        result, sent = self.check(storage.get_task(task["id"], db_path=self.db), self.observer(FakeOffers([a])))
+        self.assertFalse(result["is_deal"])
+        self.assertEqual(sent, [])
+
+    def test_known_merchant_shipping_is_used_when_the_offer_has_none(self):
+        task = self.product_task(target="220.00")
+        storage.update_task_conditions(task["id"], include_shipping=True, db_path=self.db)
+        source = storage.list_task_sources(task["id"], db_path=self.db)[0]
+        self.assertEqual(storage.set_source_shipping(task["id"], source["id"], "25.00", db_path=self.db), "updated")
+        self.assertEqual(storage.set_source_shipping(task["id"], source["id"], "1.00", db_path=self.db, only_if_unknown=True), "kept")
+        self.assertEqual(storage.set_source_shipping(task["id"] + 99, source["id"], "1.00", db_path=self.db), "foreign")
+        result, _ = self.check(storage.get_task(task["id"], db_path=self.db), self.observer(FakeOffers([offer("JB Hi-Fi", "199.00")])))
+        self.assertFalse(result["is_deal"])  # 199 + 25 known shipping = 224 > 220
+        self.assertEqual(storage.list_quotes(task_id=task["id"], db_path=self.db)[0]["shipping"], "25.00")
+
+
 if __name__ == "__main__":
     unittest.main()

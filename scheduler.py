@@ -102,7 +102,7 @@ def _is_comparable_quote(task: dict[str, Any], quote: dict[str, Any]) -> bool:
     if quote.get("in_stock") is None:
         return False
     try:
-        Decimal(quote["price"])
+        Decimal(pricing.effective_price(task, quote))
         Decimal(task["target_price"])
     except Exception:
         return False
@@ -116,7 +116,7 @@ def is_deal(task: dict[str, Any], quote: dict[str, Any]) -> bool:
     if quote.get("in_stock") is not True:
         return False
     try:
-        current = Decimal(quote["price"])
+        current = Decimal(pricing.effective_price(task, quote))
         target = Decimal(task["target_price"])
     except Exception:
         return False
@@ -134,7 +134,7 @@ def drop_deal(task: dict[str, Any], quote: dict[str, Any]) -> bool:
         return False
     try:
         limit = Decimal(reference) * (Decimal(100) - Decimal(percent)) / Decimal(100)
-        return Decimal(quote["price"]) <= limit
+        return Decimal(pricing.effective_price(task, quote)) <= limit
     except Exception:
         return False
 
@@ -420,7 +420,7 @@ def _best_buyable_quote(
         return None
 
     def sort_key(q: dict[str, Any]) -> tuple:
-        return (Decimal(str(q["price"])), int(q.get("source_id") or 0))
+        return (Decimal(pricing.effective_price(task, q)), int(q.get("source_id") or 0))
 
     return sorted(usable, key=sort_key)[0]
 
@@ -589,14 +589,15 @@ def check_task(
 
         if best is not None and fresh.get("drop_percent") and not fresh.get("reference_price"):
             # First comparable check of a drop-percent task: remember where it started.
-            storage.set_reference_price(task_id, best.get("price"), db_path=db_path)
-            fresh["reference_price"] = best.get("price")
+            storage.set_reference_price(task_id, pricing.effective_price(fresh, best), db_path=db_path)
+            fresh["reference_price"] = pricing.effective_price(fresh, best)
         reason = deal_reason(fresh, best)
         if reason is not None:
             result["is_deal"] = True
             result["deal_reason"] = reason
             result["chosen_retailer"] = best.get("retailer")
             result["chosen_price"] = best.get("price")
+            result["chosen_effective_price"] = pricing.effective_price(fresh, best)
             if should_abort is not None and should_abort():
                 result["notification_cancelled"] = True
                 result["notification_cancelled_reason"] = "scheduler_stopping"
@@ -639,7 +640,7 @@ def check_task(
                         result["notified"] = notification.get("notified", False)
                         if result["notified"] and fresh.get("drop_percent"):
                             # The next drop is measured from the price just reported.
-                            storage.set_reference_price(task_id, best.get("price"), db_path=db_path)
+                            storage.set_reference_price(task_id, pricing.effective_price(fresh, best), db_path=db_path)
                         result["event_id"] = notification.get("event_id")
                         result["notification_error"] = notification.get("error")
                         result["notification_reason"] = notification.get("reason")

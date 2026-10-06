@@ -78,6 +78,11 @@
   textarea { width: 100%; min-height: 84px; resize: vertical; font-size: 15px; padding: 12px 14px; border-radius: 12px; }
   label.field { display: grid; gap: 4px; font-size: 12px; color: var(--text-2); font-weight: 600; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  label.check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); font-weight: 500; }
+  label.check input { width: 17px; height: 17px; accent-color: var(--primary); }
+  .ship { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; color: var(--text-2); }
+  .ship input { width: 84px; padding: 4px 8px; font-size: 12px; border-radius: 8px; }
+  .total { font-size: 12px; color: var(--text-2); font-weight: 500; text-align: right; }
   .grid-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; align-items: end; }
 
   /* badges */
@@ -295,6 +300,7 @@
         <label class="field">Check every (min) <input type="number" id="cfFreq"></label>
         <label class="field">Or drop % <input type="number" id="cfDrop" min="1" max="90" step="1" placeholder="off"></label>
       </div>
+      <label class="check" style="margin-top:12px"><input type="checkbox" id="cfShipping"> Compare delivered prices (item + shipping, when the shipping cost is known)</label>
       <div class="faint" id="previewNote" style="margin-top:10px"></div>
     </div>
   </div>
@@ -329,6 +335,7 @@
         <label class="field">Or drop % <input type="number" id="newDrop" min="0" max="90" placeholder="off"></label>
         <button onclick="doModify()">Save</button>
       </div>
+      <label class="check" style="margin-top:12px"><input type="checkbox" id="newShipping"> Compare delivered prices (item + known shipping)</label>
     </div>
     <details>
       <summary>Price history</summary>
@@ -372,6 +379,10 @@ function priceEl(price, currency) {
   if (!price) { node.textContent = '—'; return node; }
   node.appendChild(el('small', currency || '?')); node.appendChild(document.createTextNode(price));
   return node;
+}
+function delivered(q) {
+  if (!q || !q.price || q.shipping === null || q.shipping === undefined || q.shipping === '') return null;
+  return (Number(q.price) + Number(q.shipping)).toFixed(2);
 }
 function badge(text, cls) { return el('span', text, 'badge ' + (cls || '')); }
 function when(iso) {
@@ -569,6 +580,7 @@ async function doPreview(rec) {
   $('cfFreq').value = p.frequency_minutes;
   $('cfFreq').min = p.min_frequency_minutes;
   $('cfDrop').value = '';
+  $('cfShipping').checked = false;
   $('previewNote').textContent = 'Only trusted merchants trigger an email by default · minimum interval ' + p.min_frequency_minutes
     + ' min · alerts go to ' + (p.notify_email || 'nobody yet — set an email in Settings') + '.';
   $('confirmStatus').textContent = '';
@@ -612,7 +624,7 @@ async function doConfirm() {
     const data = await post('/api/find/confirm', {
       token: findToken, rec_id: currentRec.id, target_price: $('cfTarget').value,
       currency: $('cfCurrency').value, comparison: $('cfComparison').value, frequency_minutes: $('cfFreq').value,
-      extra_ids: selectedMatchIds(), drop_percent: $('cfDrop').value,
+      extra_ids: selectedMatchIds(), drop_percent: $('cfDrop').value, include_shipping: $('cfShipping').checked,
     });
     toast(data.duplicate ? 'This monitor already exists (#' + data.created + ').' : 'Monitor created — watching ' + data.task.sources.length + ' merchant(s).', 'ok');
     hidePreview();
@@ -677,11 +689,15 @@ async function loadTasks() {
     const stats = el('div', null, 'stats');
     const best = t.best || bestLatest(t);
     const s1 = el('div', null, 'stat'); s1.appendChild(el('div', 'Best now', 'label'));
-    s1.appendChild(el('div', best ? money(best.price, best.currency) : '—', 'value'));
-    s1.appendChild(el('div', best ? (best.retailer || '') : 'not checked yet', 'sub'));
+    const shown = t.include_shipping && t.best_effective_price ? t.best_effective_price : (best && best.price);
+    s1.appendChild(el('div', best ? money(shown, best.currency) : '—', 'value'));
+    let subText = best ? (best.retailer || '') : 'not checked yet';
+    if (best && t.include_shipping) subText += delivered(best) ? ' · incl. shipping' : ' · shipping unknown';
+    else if (best && delivered(best)) subText += ' · ' + best.currency + ' ' + delivered(best) + ' delivered';
+    s1.appendChild(el('div', subText, 'sub'));
     const ins = insightBadge(t.insight);
     if (ins) s1.appendChild(ins);
-    const hit = best && Number(best.price) <= Number(t.target_price);
+    const hit = best && Number(shown) <= Number(t.target_price);
     if (hit) s1.querySelector('.value').classList.add('ok');
     const s2 = el('div', null, 'stat'); s2.appendChild(el('div', 'Alert', 'label'));
     s2.appendChild(el('div', (t.comparison === 'lt' ? '< ' : '≤ ') + t.currency + ' ' + t.target_price, 'value'));
@@ -751,12 +767,30 @@ async function openDetail(id) {
     mid.appendChild(meta);
     if (s.last_error) mid.appendChild(el('div', s.last_error, 'faint bad'));
     else if (s.last_checked_at) mid.appendChild(el('div', 'checked ' + when(s.last_checked_at), 'faint'));
+    const ship = el('div', null, 'ship');
+    ship.appendChild(el('span', 'Shipping'));
+    const input = document.createElement('input');
+    input.type = 'number'; input.min = '0'; input.step = '0.01'; input.placeholder = 'unknown';
+    input.value = s.shipping_cost ?? '';
+    const save = el('button', 'Set', 'sm ghost');
+    save.onclick = async () => {
+      await post('/api/tasks/' + id + '/sources/shipping', {source_id: s.id, shipping: input.value});
+      toast(input.value === '' ? 'Shipping cleared.' : 'Shipping set for ' + (s.retailer || 'merchant') + '.', 'ok');
+      openDetail(id); loadTasks();
+    };
+    ship.appendChild(input); ship.appendChild(save);
+    mid.appendChild(ship);
     row.appendChild(mid);
-    row.appendChild(el('div', latest && latest.price ? money(latest.price, latest.currency) : '—', 'amount'));
+    const priceBox = el('div');
+    priceBox.appendChild(el('div', latest && latest.price ? money(latest.price, latest.currency) : '—', 'amount'));
+    const total = delivered(latest && latest.price ? {...latest, shipping: latest.shipping ?? s.shipping_cost} : null);
+    if (total) priceBox.appendChild(el('div', '= ' + total + ' delivered', 'total'));
+    row.appendChild(priceBox);
     box.appendChild(row);
   }
   $('newPrice').value = t.target_price; $('newComparison').value = t.comparison; $('newFreq').value = t.frequency_minutes;
   $('newDrop').value = t.drop_percent || '';
+  $('newShipping').checked = !!t.include_shipping;
   renderChart($('priceChart'), t.history, t.target_price);
   const hist = $('historyRows'); clear(hist);
   for (const q of t.history) {
@@ -830,6 +864,7 @@ async function doModify() {
   await post('/api/tasks/' + currentDetailId + '/modify', {
     target_price: $('newPrice').value, comparison: $('newComparison').value, frequency_minutes: $('newFreq').value,
     drop_percent: $('newDrop').value === '0' ? '' : $('newDrop').value,
+    include_shipping: $('newShipping').checked,
   });
   toast('Alert settings saved.', 'ok');
   openDetail(currentDetailId); loadTasks();

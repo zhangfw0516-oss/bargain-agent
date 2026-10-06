@@ -94,6 +94,8 @@ def observe_source(
 
 def _quote(offer, task, source, fetched_at) -> dict[str, Any]:
     return {
+        # Shipping stated by Google for this offer, else what is known for the merchant.
+        "shipping": offer.shipping if offer.shipping is not None else source.get("shipping_cost"),
         "product_name": offer.title or task.get("product_name"),
         "retailer": offer.merchant,
         "url": offer.link or source["url"],
@@ -144,6 +146,10 @@ def _observe_product(source, task, *, providers, db_path, context: CheckContext)
         context.detail_left -= 1
         try:
             offers, fresh = detail.offers(ProductRef(ref.product_id, ref.page_token, None, ref.title))
+            learned = next((o.shipping for o in offers if o.shipping is not None
+                            and normalise_merchant(o.merchant) == normalise_merchant(source.get("retailer") or "")), None)
+            if learned is not None:
+                storage.set_source_shipping(source["task_id"], source["id"], learned, db_path=db_path, only_if_unknown=True)
             if fresh.page_token and fresh.page_token != ref.page_token:
                 storage.update_source_ref(source["id"], page_token=fresh.page_token, db_path=db_path)
         except ProviderError as exc:
@@ -196,6 +202,7 @@ def _observe_page(source, task, *, providers, llm_opts) -> dict[str, Any]:
             "currency": extracted["currency"],
             "in_stock": extracted["in_stock"],
             "condition": None,
+            "shipping": source.get("shipping_cost"),
             "fetched_at": _now(),
             # The user chose this exact page, so it is trusted by definition.
             "trusted": True,
@@ -267,7 +274,15 @@ def price_insight(task: dict[str, Any], current: str | None, *, days: int = 30,
 
 def effective_price(task: dict[str, Any], quote: dict[str, Any]) -> str:
     """The price compared against thresholds: item price, plus known shipping when the
-    task compares landed prices."""
+    task compares landed prices. Unknown shipping leaves the item price."""
+    from decimal import Decimal, InvalidOperation
+
+    shipping = quote.get("shipping")
+    if task.get("include_shipping") and shipping not in (None, ""):
+        try:
+            return str((Decimal(str(quote["price"])) + Decimal(str(shipping))).quantize(Decimal("0.01")))
+        except (InvalidOperation, ValueError):
+            pass
     return str(quote["price"])
 
 

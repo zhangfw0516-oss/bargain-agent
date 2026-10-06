@@ -205,6 +205,10 @@ def _migrate_v1(conn: sqlite3.Connection) -> None:
     # Optional "alert on an X% drop" trigger and the price it is measured from.
     _ensure_column(conn, "tasks", "drop_percent", "drop_percent TEXT")
     _ensure_column(conn, "tasks", "reference_price", "reference_price TEXT")
+    # Landed-price comparison: per-merchant shipping and the per-task switch.
+    _ensure_column(conn, "tasks", "include_shipping", "include_shipping INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "task_sources", "shipping_cost", "shipping_cost TEXT")
+    _ensure_column(conn, "quotes", "shipping", "shipping TEXT")
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS offer_verdicts (
@@ -346,8 +350,8 @@ def create_task_with_sources(
             INSERT INTO tasks
             (created_at, updated_at, status, product_name, url, target_price, currency,
              comparison, frequency_minutes, condition, notify_email, next_check_at,
-             identity_json, drop_percent)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             identity_json, drop_percent, include_shipping)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 now,
@@ -364,6 +368,7 @@ def create_task_with_sources(
                 task.get("next_check_at") or now,
                 identity_json,
                 task.get("drop_percent"),
+                1 if task.get("include_shipping") else 0,
             ),
         )
         task_id = int(cursor.lastrowid)
@@ -375,8 +380,8 @@ def create_task_with_sources(
                 """
                 INSERT OR IGNORE INTO task_sources
                 (task_id, retailer, url, source_kind, product_id, page_token, search_query,
-                 enabled, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                 shipping_cost, enabled, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                 """,
                 (
                     task_id,
@@ -386,6 +391,7 @@ def create_task_with_sources(
                     source.get("product_id"),
                     source.get("page_token"),
                     source.get("search_query"),
+                    source.get("shipping_cost"),
                     now,
                     now,
                 ),
@@ -428,6 +434,7 @@ def update_task_conditions(
     db_path: Path | None = None,
     end_episode: bool = False,
     drop_percent: str | None = None,
+    include_shipping: bool | None = None,
 ) -> dict[str, Any] | None:
     """Change a task's threshold, comparison or frequency.
 
@@ -442,7 +449,13 @@ def update_task_conditions(
     """
     sets: list[str] = []
     params: list[Any] = []
-    threshold_changed = target_price is not None or comparison is not None or drop_percent is not None
+    threshold_changed = (target_price is not None or comparison is not None or drop_percent is not None
+                         or include_shipping is not None)
+    if include_shipping is not None:
+        # Changing what is compared changes the reference for drop alerts too.
+        sets.append("include_shipping = ?")
+        params.append(1 if include_shipping else 0)
+        sets.append("reference_price = NULL")
     if drop_percent is not None:
         # "" clears the drop trigger; a new value restarts it from the next check's price.
         sets.append("drop_percent = ?")
@@ -505,8 +518,8 @@ def save_quote(
             """
             INSERT INTO quotes
             (task_id, source_id, fetched_at, price, currency, in_stock, product_name,
-             retailer, url, error, response_ms, condition, identity_verdict, check_run_id, trusted)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             retailer, url, error, response_ms, condition, identity_verdict, check_run_id, trusted, shipping)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 task_id,
@@ -524,6 +537,7 @@ def save_quote(
                 quote.get("identity_verdict"),
                 quote.get("check_run_id"),
                 None if quote.get("trusted") is None else (1 if quote.get("trusted") else 0),
+                quote.get("shipping"),
             ),
         )
         return int(cursor.lastrowid)
@@ -635,6 +649,23 @@ def record_source_check(
             "UPDATE task_sources SET last_checked_at = ?, last_error = ?, updated_at = ? WHERE id = ?",
             (now, error, now, source_id),
         )
+
+
+def set_source_shipping(
+    task_id: int, source_id: int, shipping: str | None, db_path: Path | None = None, *, only_if_unknown: bool = False
+) -> str:
+    """Set a merchant's shipping cost (None clears). Returns updated/missing/foreign/kept."""
+    with _transaction(db_path) as conn:
+        row = conn.execute("SELECT task_id, shipping_cost FROM task_sources WHERE id = ?", (source_id,)).fetchone()
+        if row is None:
+            return "missing"
+        if int(row["task_id"]) != int(task_id):
+            return "foreign"
+        if only_if_unknown and row["shipping_cost"] is not None:
+            return "kept"
+        conn.execute("UPDATE task_sources SET shipping_cost = ?, updated_at = ? WHERE id = ? AND task_id = ?",
+                     (shipping, _now(), source_id, task_id))
+        return "updated"
 
 
 def update_source_ref(source_id: int, *, page_token: str | None, db_path: Path | None = None) -> None:

@@ -301,6 +301,7 @@ def _quote_view(q: dict[str, Any]) -> dict[str, Any]:
         "condition": q.get("condition"),
         "trusted": None if q.get("trusted") is None else bool(q.get("trusted")),
         "identity_verdict": q.get("identity_verdict"),
+        "shipping": q.get("shipping"),
         "url": q.get("url"),
         "error": q.get("error"),
     }
@@ -345,6 +346,7 @@ def _task_summary(task: dict[str, Any], db_path: Path) -> dict[str, Any]:
                 "last_checked_at": s["last_checked_at"],
                 "last_error": s["last_error"],
                 "consecutive_empty": s.get("consecutive_empty") or 0,
+                "shipping_cost": s.get("shipping_cost"),
                 "latest": latest,
             }
         )
@@ -357,6 +359,7 @@ def _task_summary(task: dict[str, Any], db_path: Path) -> dict[str, Any]:
         "frequency_minutes": task["frequency_minutes"],
         "drop_percent": task.get("drop_percent"),
         "reference_price": task.get("reference_price"),
+        "include_shipping": bool(task.get("include_shipping")),
         "status": task["status"],
         "next_check_at": task["next_check_at"],
         "last_check_at": task["last_check_at"],
@@ -561,7 +564,12 @@ def api_find_confirm(state: AppState, body: dict[str, Any]) -> dict[str, Any]:
                        ("NZD", "AUD", "USD"), "currency")
     frequency = _frequency(body.get("frequency_minutes") or 1440, product_source=product_source)
     drop_percent = _percent(body.get("drop_percent"))
+    include_shipping = bool(body.get("include_shipping"))
     email = _require_email(state)
+    preview_shipping = {
+        pricing.normalise_merchant(o.get("merchant") or ""): o.get("shipping")
+        for o in entry["previews"].get(rec["id"]) or [] if o.get("shipping") is not None
+    }
     extra_ids = body.get("extra_ids") or []
     if not isinstance(extra_ids, list) or not all(isinstance(i, str) for i in extra_ids):
         raise WebError(400, "extra_ids must be a list of match ids.")
@@ -576,7 +584,8 @@ def api_find_confirm(state: AppState, body: dict[str, Any]) -> dict[str, Any]:
             sources = [
                 {"url": item["link"], "retailer": item.get("merchant") or "Google Shopping",
                  "source_kind": storage.SOURCE_SERPAPI, "product_id": item.get("product_id"),
-                 "page_token": item.get("page_token"), "search_query": query}
+                 "page_token": item.get("page_token"), "search_query": query,
+                 "shipping_cost": preview_shipping.get(pricing.normalise_merchant(item.get("merchant") or ""))}
                 for item in [rec] + extras
             ]
         else:
@@ -591,6 +600,7 @@ def api_find_confirm(state: AppState, body: dict[str, Any]) -> dict[str, Any]:
             "comparison": comparison,
             "frequency_minutes": frequency,
             "drop_percent": drop_percent,
+            "include_shipping": include_shipping,
             "condition": need.get("condition"),
             "notify_email": email,
             "status": "active",
@@ -682,7 +692,10 @@ def api_modify(state: AppState, task_id: int, body: dict[str, Any]) -> dict[str,
         raise WebError(404, f"Task {task_id} not found.")
     target, comparison, frequency = body.get("target_price"), body.get("comparison"), body.get("frequency_minutes")
     drop = body.get("drop_percent")
-    if target is None and comparison is None and frequency is None and drop is None:
+    include_shipping = body.get("include_shipping")
+    if include_shipping is not None:
+        include_shipping = bool(include_shipping)
+    if target is None and comparison is None and frequency is None and drop is None and include_shipping is None:
         raise WebError(400, "Nothing to change.")
     if drop is not None:
         drop = _percent(drop) or ""
@@ -692,13 +705,39 @@ def api_modify(state: AppState, task_id: int, body: dict[str, Any]) -> dict[str,
         comparison = _choice(comparison, ("lt", "lte"), "comparison")
     if frequency is not None:
         frequency = _frequency(frequency, product_source=_has_product_source(task_id, state.db_path))
-    threshold_changed = target is not None or comparison is not None or drop is not None
+    current = storage.get_task(task_id, db_path=state.db_path)
+    if include_shipping is not None and include_shipping == bool(current.get("include_shipping")):
+        include_shipping = None  # unchanged: do not restart the episode
+    threshold_changed = target is not None or comparison is not None or drop is not None or include_shipping is not None
     updated = storage.update_task_conditions(
         task_id, target_price=target, comparison=comparison, frequency_minutes=frequency,
-        db_path=state.db_path, end_episode=threshold_changed, drop_percent=drop,
+        db_path=state.db_path, end_episode=threshold_changed, drop_percent=drop, include_shipping=include_shipping,
     )
     return {"updated": True, "episode_ended": threshold_changed, "task": _task_summary(updated, state.db_path),
             "email_warning": state.email_warning()}
+
+
+def api_source_shipping(state: AppState, task_id: int, body: dict[str, Any]) -> dict[str, Any]:
+    """Set (or clear with "") the shipping cost used for one merchant."""
+    if storage.get_task(task_id, db_path=state.db_path) is None:
+        raise WebError(404, f"Task {task_id} not found.")
+    raw = body.get("shipping")
+    if raw in (None, ""):
+        value = None
+    else:
+        try:
+            amount = Decimal(str(raw))
+        except (InvalidOperation, ValueError):
+            raise WebError(400, f"Invalid shipping cost: {raw!r}") from None
+        if not amount.is_finite() or amount < 0 or amount > 10000:
+            raise WebError(400, "Shipping must be between 0 and 10000.")
+        value = str(amount.quantize(Decimal("0.01")))
+    outcome = storage.set_source_shipping(task_id, int(body.get("source_id")), value, db_path=state.db_path)
+    if outcome == "missing":
+        raise WebError(404, "Source not found.")
+    if outcome == "foreign":
+        raise WebError(400, "That source belongs to a different task.")
+    return {"updated": True, "task": _task_summary(storage.get_task(task_id, db_path=state.db_path), state.db_path)}
 
 
 def api_source_toggle(state: AppState, task_id: int, source_id: int, enabled: bool) -> dict[str, Any]:
@@ -884,6 +923,8 @@ def make_handler(state: AppState, port: int):
                     self._send_json(200, _POST_ROUTES[path](state, body))
                 elif len(parts) == 4 and parts[:2] == ["api", "tasks"] and parts[3] in _TASK_ACTIONS:
                     self._send_json(200, _TASK_ACTIONS[parts[3]](state, int(parts[2]), body))
+                elif len(parts) == 5 and parts[:2] == ["api", "tasks"] and parts[3] == "sources" and parts[4] == "shipping":
+                    self._send_json(200, api_source_shipping(state, int(parts[2]), body))
                 elif len(parts) == 5 and parts[:2] == ["api", "tasks"] and parts[3] == "sources" and parts[4] in ("enable", "disable"):
                     self._send_json(200, api_source_toggle(state, int(parts[2]), int(body.get("source_id")), parts[4] == "enable"))
                 else:
