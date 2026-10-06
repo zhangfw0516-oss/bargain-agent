@@ -23,7 +23,7 @@ import operator
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, Callable, TypedDict
 
@@ -85,6 +85,8 @@ def _merge(left: dict, right: dict) -> dict:
 
 class FindState(TypedDict, total=False):
     description: str
+    #: The user's latest follow-up when refining an earlier find.
+    followup: str | None
     constraints: dict[str, Any]
     started: float
     need: dict[str, Any]
@@ -197,16 +199,19 @@ def build_graph(deps: FindDeps):
         rounds = state.get("rewrite_rounds", 0)
         remaining = limits.max_queries - state.get("searches", 0)
         retry = rounds > 0
+        refining = bool(state.get("followup"))
         feedback = None
         if retry:
             feedback = state.get("select_note") or (
                 "The previous queries found no suitable product." if state.get("evidence") else "The previous queries returned no listings."
             )
+        elif refining:
+            feedback = f"The user refined the request: {state['followup']}. Search for what the refinement adds."
         result = rewrite_agent.run(
             state["description"],
             state.get("need"),
             max_queries=max(1, remaining),
-            previous_queries=state.get("all_queries") if retry else None,
+            previous_queries=state.get("all_queries") if (retry or refining) else None,
             feedback=feedback,
             opts=deps.llm_for(rewrite_agent.NAME),
         )
@@ -371,25 +376,50 @@ def default_deps(before_call=None) -> FindDeps:
     return FindDeps(shopping=providers.shopping, supplement=providers.supplement, limits=FindLimits.from_config())
 
 
-def run_find(description: str, *, deps: FindDeps | None = None, constraints: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Run the Find graph and return recommendations, evidence and a stage trace."""
-    description = " ".join(str(description or "").split())
+#: New searches allowed when refining an earlier find (its listings are reused).
+REFINE_MAX_QUERIES = 2
+
+
+def refine_description(original: str, followups: list[str]) -> str:
+    lines = [" ".join(original.split())] + [f"Follow-up: {' '.join(f.split())}" for f in followups]
+    return "\n".join(lines)
+
+
+def run_find(
+    description: str,
+    *,
+    deps: FindDeps | None = None,
+    constraints: dict[str, Any] | None = None,
+    previous: dict[str, Any] | None = None,
+    followup: str | None = None,
+) -> dict[str, Any]:
+    """Run the Find graph and return recommendations, evidence and a stage trace.
+
+    With ``previous`` (an earlier result) and ``followup``, the find is refined: the
+    earlier listings and queries are kept, the agents re-read the need with the
+    follow-up, and at most ``REFINE_MAX_QUERIES`` new searches are made.
+    """
+    description = description.strip()
     if not description:
         raise ValueError("Please describe what you are looking for.")
     deps = deps or default_deps()
+    if previous is not None:
+        deps = replace(deps, limits=replace(deps.limits, max_queries=min(deps.limits.max_queries, REFINE_MAX_QUERIES)))
     started = deps.clock()
+    seed = {e["id"]: dict(e) for e in (previous or {}).get("evidence") or [] if e.get("id")}
     state = build_graph(deps).invoke(
         {
             "description": description,
+            "followup": " ".join(str(followup or "").split()) or None,
             "constraints": dict(constraints or {}),
             "started": started,
             "rewrite_rounds": 0,
             "searches": 0,
-            "supplement_searches": 0,
-            "evidence": {},
+            "supplement_searches": 1 if previous is not None else 0,
+            "evidence": seed,
             "stages": {},
             "notes": [],
-            "all_queries": [],
+            "all_queries": list((previous or {}).get("queries") or []),
         }
     )
     recs = state.get("recommendations") or []

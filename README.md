@@ -28,6 +28,8 @@ flowchart LR
 - **Agents choose, code decides.** Agents may only pick server-assigned evidence ids; every model output is validated; budget/condition vetoes, deal thresholds, deduplication and send permits are deterministic. Every agent falls back to plain code when the model is unavailable.
 - **Multi-merchant monitoring**: when you pick a product, matching finds the same product at other merchants (rules + AI verification, at most 5, trusted ones pre-selected). Each check runs one shared Google Shopping search (Serper; SerpApi as fallback/detail) and alerts on the cheapest trusted same-product offer. A pasted product URL is read through Scrape.do, Firecrawl or Tavily (fallback chain): a single JSON-LD product offer is used directly, otherwise the price-extractor agent reads the page and its price must appear on the page.
 - **Alerts** fire when the cheapest trusted same-product offer reaches your target price, or (optional) drops a set percentage below the price at the last alert.
+- **Refine a find** in conversation ("only black", "cheaper", "只要 Sony 的"): earlier listings are kept and the agents search and choose again.
+- **Price context and delivered prices**: monitors show the 30-day low and average; optionally compare item + shipping (shipping learned from Google or set per merchant).
 - **All merchants are shown; trusted merchants trigger alerts** (`TRUSTED_MERCHANTS`, `ALERT_TRUSTED_ONLY`). Second-hand offers are rejected unless requested, and the offer-verifier agent can veto wrong models and bundles.
 - **Cost guards:** `SERPER_DAILY_MAX_CALLS`, `SERPAPI_DAILY_MAX_CALLS`, `FIND_MAX_QUERIES`, `MONITOR_MAX_SOURCES`, `MONITOR_MIN_FREQUENCY_MINUTES`.
 

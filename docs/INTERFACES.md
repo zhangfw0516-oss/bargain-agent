@@ -83,6 +83,8 @@ All POSTs need matching `Host`, `Origin`, `csrftoken` cookie and `X-CSRF-Token`;
 | `GET /api/setup/status` | missing keys only, provider status |
 | `POST /api/find` `{description, async?}` | run the pipeline; returns `token` + recommendations, or `{job}` with `async: true` (no writes) |
 | `GET /api/find/status?job=` | stages reached so far, then the find response |
+| `POST /api/find/refine` `{token, message, async?}` | refine an earlier find ("only black"): keeps its listings, ≤ 2 new searches, agents re-select; returns a new token and `followups` |
+| `POST /api/tasks/{id}/sources/shipping` `{source_id, shipping}` | set or clear (`""`) a merchant's shipping cost |
 | `POST /api/find/preview` `{token, rec_id}` | the product's sellers + `matches` at other merchants (≤ 1 extra search), suggested target (no writes) |
 | `POST /api/find/confirm` `{token, rec_id, target_price, comparison, currency, frequency_minutes, extra_ids, drop_percent}` | creates the task with the chosen listing plus selected matches (capped); idempotent per token + rec |
 | `POST /api/tasks/add` `{instruction}` or explicit fields | direct URL task |

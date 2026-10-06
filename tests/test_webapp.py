@@ -263,6 +263,19 @@ class TestFindFlow(WebCase):
         self.assertEqual(preview[0], 200)
         self.assertEqual(self.client.get("/api/find/status?job=nope")[0], 404)
 
+    def test_refine_accumulates_follow_ups(self):
+        token = self.find()["token"]
+        first = self.client.post("/api/find/refine", {"token": token, "message": "only black"})[1]
+        self.assertEqual(first["followups"], ["only black"])
+        self.assertEqual(self.fakes.finds[-1], "fitbit under 250" + chr(10) + "Follow-up: only black")
+        second = self.client.post("/api/find/refine", {"token": first["token"], "message": "cheaper"})[1]
+        self.assertEqual(second["followups"], ["only black", "cheaper"])
+        self.assertEqual(second["original_description"], "fitbit under 250")
+        self.assertEqual(self.client.post("/api/find/refine", {"token": token, "message": " "})[0], 400)
+        self.assertEqual(self.client.post("/api/find/refine", {"token": "gone", "message": "x"})[0], 404)
+        job = self.client.post("/api/find/refine", {"token": token, "message": "white", "async": True})[1]
+        self.assertIn("job", job)
+
     def test_find_validation(self):
         self.assertEqual(self.client.post("/api/find", {"description": "  "})[0], 400)
         self.assertEqual(self.client.post("/api/find", {"description": "x" * 401})[0], 400)

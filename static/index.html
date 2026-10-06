@@ -223,6 +223,18 @@
         <div id="findStages" class="hidden"></div>
       </div>
       <div id="findTrace" class="stage-trace"></div>
+      <div id="refineBox" class="card hidden" style="padding:14px 16px">
+        <div class="row" style="margin-bottom:8px">
+          <strong>Refine these results</strong>
+          <span id="refineHistory" class="row" style="gap:6px"></span>
+        </div>
+        <div class="row">
+          <input type="text" id="refineInput" maxlength="200" style="flex:1; min-width:220px"
+                 placeholder="e.g. only black · under NZD 200 · not Fitbit · 只要有 GPS 的">
+          <button id="refineBtn" onclick="doRefine()">Refine</button>
+        </div>
+        <div id="refineChips" class="chips" style="margin-top:8px"></div>
+      </div>
       <div id="findRecommendations" class="results"></div>
       <div id="findNotes" class="faint"></div>
     </section>
@@ -455,15 +467,13 @@ for (const text of EXAMPLES) {
 }
 $('findDescription').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) doFind(); });
 
-async function doFind() {
-  const description = $('findDescription').value.trim();
-  if (!description) { showError('Please describe what you are looking for.'); return; }
-  $('findBtn').disabled = true;
+async function runFindJob(path, body, buttons) {
+  buttons.forEach(b => b.disabled = true);
   clear($('findRecommendations')); clear($('findTrace')); clear($('findNotes')); hidePreview();
   renderProgress([], 0);
+  const started = Date.now();
   try {
-    const {job} = await post('/api/find', {description, async: true});
-    const started = Date.now();
+    const {job} = await post(path, {...body, async: true});
     let state;
     for (;;) {
       state = await api('/api/find/status?job=' + encodeURIComponent(job));
@@ -480,10 +490,29 @@ async function doFind() {
     $('findStages').classList.add('hidden');
     $('findStatus').textContent = '';
   } finally {
-    $('findBtn').disabled = false;
+    buttons.forEach(b => b.disabled = false);
     loadTasks();
   }
 }
+async function doFind() {
+  const description = $('findDescription').value.trim();
+  if (!description) { showError('Please describe what you are looking for.'); return; }
+  $('refineBox').classList.add('hidden');
+  await runFindJob('/api/find', {description}, [$('findBtn')]);
+}
+async function doRefine() {
+  const message = $('refineInput').value.trim();
+  if (!message || !findToken) { showError('Type how to refine the results, e.g. "only black".'); return; }
+  await runFindJob('/api/find/refine', {token: findToken, message}, [$('findBtn'), $('refineBtn')]);
+  $('refineInput').value = '';
+}
+const REFINE_EXAMPLES = ['Cheaper options', 'Only trusted NZ shops', 'Show other brands', 'Higher-end models'];
+for (const text of REFINE_EXAMPLES) {
+  const chip = el('button', text, 'chip');
+  chip.onclick = () => { $('refineInput').value = text; $('refineInput').focus(); };
+  $('refineChips').appendChild(chip);
+}
+$('refineInput').addEventListener('keydown', e => { if (e.key === 'Enter') doRefine(); });
 
 const STAGE_LABELS = {understand: 'Understand', rewrite: 'Search terms', search: 'Search', select: 'Choose', describe: 'Summarise'};
 function renderProgress(stages, seconds) {
@@ -502,6 +531,9 @@ function renderProgress(stages, seconds) {
 }
 
 function renderFind(data) {
+  const history = $('refineHistory'); clear(history);
+  for (const f of data.followups || []) history.appendChild(badge('↳ ' + f, 'info'));
+  $('refineBox').classList.remove('hidden');
   const trace = $('findTrace');
   const fallbacks = Object.entries(data.stages || {}).filter(([, s]) => s !== 'ok' && s !== 'skipped');
   trace.appendChild(badge(fallbacks.length ? 'Some agents used fallbacks' : 'All agents OK', fallbacks.length ? 'warn' : 'ok'));

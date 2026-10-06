@@ -161,6 +161,45 @@ class TestRunFind(unittest.TestCase):
             run_find("  ", deps=deps()[0])
 
 
+class TestRefine(unittest.TestCase):
+    def first_result(self):
+        shop = FakeSearch("serpapi", [result("Fitbit Charge 6 Black", "111", "229.00"), result("Fitbit Charge 6 White", "222", "219.00")])
+        llm = FakeLLM(dict(ALL_OK, **{"select.md": {"selected": ["e1", "e2"]}, "describe.md": {"summaries": {"e1": "a", "e2": "b"}}}))
+        d, _ = deps(shop, llm=llm)
+        return run_find("fitbit", deps=d)
+
+    def test_refine_keeps_listings_adds_bounded_searches_and_reselects(self):
+        from pipeline import refine_description
+
+        previous = self.first_result()
+        shop = FakeSearch("serpapi", [result("Fitbit Charge 6 Black Edition", "333", "205.00")], [], [])
+        llm = FakeLLM({
+            "understand.md": {"category": "fitness tracker", "colour": "black"},
+            "rewrite.md": {"queries": ["fitbit charge 6 black", "fitbit black band", "third one"]},
+            "select.md": {"selected": ["e3", "e1"]},
+            "describe.md": {"summaries": {"e1": "黑色", "e3": "黑色特别版"}},
+        })
+        d, fake = deps(shop, llm=llm, max_queries=3)
+        out = run_find(refine_description("fitbit", ["only black"]), deps=d, previous=previous, followup="only black")
+        self.assertEqual([r["id"] for r in out["recommendations"]], ["e3", "e1"])
+        self.assertEqual(shop.queries, ["fitbit charge 6 black", "fitbit black band"])   # capped at 2
+        rewrite_call = next(c for c in fake.calls if c["prompt"] == "rewrite.md")
+        self.assertIn("only black", rewrite_call["user"])
+        self.assertIn('"previous_queries": ["fitbit charge 6", "fitness tracker"]', rewrite_call["user"])
+        self.assertIn("Follow-up: only black", fake.calls[0]["user"])
+        self.assertEqual(len(out["evidence"]), 3)
+
+    def test_refine_without_new_queries_reselects_from_earlier_listings(self):
+        previous = self.first_result()
+        shop = FakeSearch("serpapi")
+        llm = FakeLLM({"understand.md": {"category": "fitness tracker", "colour": "white"}, "rewrite.md": RuntimeError("down"),
+                       "select.md": {"selected": ["e2"]}, "describe.md": {"summaries": {"e2": "白色"}}})
+        d, _ = deps(shop, llm=llm)
+        out = run_find("fitbit" + chr(10) + "Follow-up: only white", deps=d, previous=previous, followup="only white")
+        self.assertEqual(shop.queries, [])
+        self.assertEqual([r["title"] for r in out["recommendations"]], ["Fitbit Charge 6 White"])
+
+
 class TestBuildRecommendations(unittest.TestCase):
     EVIDENCE = {
         "e1": {"id": "e1", "title": "A", "link": "https://x/1", "price": "350.00", "currency": "NZD", "product_id": "1"},

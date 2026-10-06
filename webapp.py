@@ -98,7 +98,8 @@ class AppState:
 
         return build_providers(pricing.quota_guard(self.db_path))
 
-    def run_find(self, description: str, on_stage: Callable[[str], None] | None = None) -> dict[str, Any]:
+    def run_find(self, description: str, on_stage: Callable[[str], None] | None = None,
+                 previous: dict[str, Any] | None = None, followup: str | None = None) -> dict[str, Any]:
         if self.services.find is not None:
             return self.services.find(description)
         providers = self._providers()
@@ -106,10 +107,11 @@ class AppState:
             shopping=providers.shopping, supplement=providers.supplement, limits=pipeline.FindLimits.from_config(),
             on_stage=on_stage or (lambda _stage: None),
         )
-        return pipeline.run_find(description, deps=deps)
+        return pipeline.run_find(description, deps=deps, previous=previous, followup=followup)
 
     # -- background finds ------------------------------------------------------
-    def start_find_job(self, description: str) -> str:
+    def start_find_job(self, description: str, *, previous: dict[str, Any] | None = None,
+                       followup: str | None = None, extra: dict[str, Any] | None = None) -> str:
         job_id = secrets.token_urlsafe(12)
         job: dict[str, Any] = {"status": "running", "stages": [], "response": None, "error": None}
         with self._lock:
@@ -120,7 +122,8 @@ class AppState:
 
         def work() -> None:
             try:
-                result = self.run_find(description, on_stage=job["stages"].append)
+                result = self.run_find(description, on_stage=job["stages"].append, previous=previous, followup=followup)
+                result.update(extra or {})
                 job["response"] = _find_response(self, result)
                 job["status"] = "done"
             except config.ConfigError as exc:
@@ -444,9 +447,38 @@ def api_find(state: AppState, body: dict[str, Any]) -> dict[str, Any]:
     return _find_response(state, result)
 
 
+def api_find_refine(state: AppState, body: dict[str, Any]) -> dict[str, Any]:
+    """Refine an earlier find with a follow-up ("only black", "cheaper"). No writes."""
+    token = str(body.get("token") or "")
+    message = " ".join(str(body.get("message") or "").split())
+    if not message:
+        raise WebError(400, "Please type how to refine the results.")
+    if len(message) > 200:
+        raise WebError(400, "Keep the refinement under 200 characters.")
+    entry = state.get_find(token)
+    if entry is None:
+        raise WebError(404, "This find result has expired; please run Find again.")
+    previous = entry["result"]
+    original = previous.get("original_description") or previous.get("description") or ""
+    followups = list(previous.get("followups") or []) + [message]
+    if len(followups) > 5:
+        raise WebError(400, "That is a lot of refinements; start a new Find instead.")
+    description = pipeline.refine_description(original, followups)
+    extra = {"original_description": original, "followups": followups}
+    if body.get("async"):
+        return {"job": state.start_find_job(description, previous=previous, followup=message, extra=extra)}
+    try:
+        result = state.run_find(description, previous=previous, followup=message)
+    except config.ConfigError as exc:
+        raise WebError(400, f"Configuration problem: {exc}") from None
+    result.update(extra)
+    return _find_response(state, result)
+
+
 def _find_response(state: AppState, result: dict[str, Any]) -> dict[str, Any]:
     token = state.store_find(result)
-    keys = ("status", "description", "need", "queries", "recommendations", "stages", "notes", "usage")
+    keys = ("status", "description", "need", "queries", "recommendations", "stages", "notes", "usage",
+            "original_description", "followups")
     return {"token": token, **{k: result.get(k) for k in keys}}
 
 
@@ -792,6 +824,7 @@ def api_monitor_stop(state: AppState) -> dict[str, Any]:
 _POST_ROUTES: dict[str, Callable[[AppState, dict[str, Any]], dict[str, Any]]] = {
     "/api/find": api_find,
     "/api/find/preview": api_find_preview,
+    "/api/find/refine": api_find_refine,
     "/api/find/confirm": api_find_confirm,
     "/api/tasks/add": api_add_task,
     "/api/setup": api_setup_save,
