@@ -865,7 +865,9 @@ function renderChart(box, history, target) {
   const points = (history || []).filter(q => q.price && !q.error && q.identity_verdict !== 'different')
     .map(q => ({t: Date.parse(q.fetched_at), p: Number(q.price), r: q.retailer || '?'}))
     .filter(q => isFinite(q.t) && isFinite(q.p)).sort((a, b) => a.t - b.t);
-  if (points.length < 2) { box.textContent = 'The trend appears after two or more checks.'; return; }
+  // one check run stores each merchant seconds apart; a trend needs checks at different times
+  const span = points.length ? points[points.length - 1].t - points[0].t : 0;
+  if (points.length < 2 || span < 10 * 60 * 1000) { box.textContent = 'The trend appears after two or more checks.'; return; }
   const styles = getComputedStyle(document.documentElement);
   const grid = styles.getPropertyValue('--border').trim(), text = styles.getPropertyValue('--text-3').trim(), bad = styles.getPropertyValue('--bad').trim();
   const W = 640, H = 210, L = 52, R = 12, T = 12, B = 26;
