@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import secrets
 import threading
 from dataclasses import dataclass, field
@@ -197,7 +198,7 @@ class AppState:
 
     def email_warning(self) -> str | None:
         if not self.notify_email:
-            return "No notification email is set; add one in Setup before creating a task."
+            return "No notification email is set; add one in Settings before creating a task."
         return f"A real notification email may be sent to {self.notify_email} when a deal is found."
 
     # -- find store --------------------------------------------------------------
@@ -424,7 +425,7 @@ def api_setup_status(state: AppState) -> dict[str, Any]:
     return {
         **status,
         "providers": providers,
-        "note": "SMTP, model and provider keys are loaded from the app's .env; the UI only sets the recipient email.",
+        "note": "Model and provider keys are loaded from the app's .env; the recipient and the sending mailbox can be set here.",
     }
 
 
@@ -796,16 +797,47 @@ def api_source_toggle(state: AppState, task_id: int, source_id: int, enabled: bo
             "task": _task_summary(storage.get_task(task_id, db_path=state.db_path), state.db_path)}
 
 
+SETUP_PAGE_KEYS = ("DEFAULT_NOTIFY_EMAIL", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM")
+
+
+def _looks_like_email(value: str) -> bool:
+    name, at, domain = value.partition("@")
+    return bool(at and name and "." in domain and " " not in value)
+
+
 def api_setup_save(state: AppState, body: dict[str, Any]) -> dict[str, Any]:
-    """Only the recipient email can be set from the page; everything else lives in .env."""
-    foreign = sorted(k for k in body if k != "DEFAULT_NOTIFY_EMAIL")
+    """The recipient and the sending mailbox (SMTP) can be set from the page.
+
+    Model and provider keys stay in .env. Empty fields are left unchanged, and values
+    are never echoed back.
+    """
+    foreign = sorted(k for k in body if k not in SETUP_PAGE_KEYS)
     if foreign:
-        raise WebError(400, f"Only DEFAULT_NOTIFY_EMAIL can be set here; {', '.join(foreign)} must be configured in .env.")
-    value = str(body.get("DEFAULT_NOTIFY_EMAIL") or "").strip()
-    if "@" not in value or value.startswith("@") or value.endswith("@"):
-        raise WebError(400, "That does not look like an email address.")
-    config_setup.write_updates({"DEFAULT_NOTIFY_EMAIL": value})
-    return {"saved": ["DEFAULT_NOTIFY_EMAIL"], **config_setup.status()}
+        raise WebError(400, f"{', '.join(foreign)} must be configured in .env.")
+    updates: dict[str, str] = {}
+    for key in SETUP_PAGE_KEYS:
+        value = str(body.get(key) or "").strip()
+        if not value:
+            continue
+        if len(value) > 254 or any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise WebError(400, f"{key} contains characters that are not allowed.")
+        if key in ("DEFAULT_NOTIFY_EMAIL", "SMTP_FROM") and not _looks_like_email(value):
+            raise WebError(400, "That does not look like an email address.")
+        if key == "SMTP_PORT" and not (value.isdigit() and 0 < int(value) < 65536):
+            raise WebError(400, "SMTP_PORT must be a number such as 465 or 587.")
+        if key == "SMTP_HOST" and (" " in value or "/" in value):
+            raise WebError(400, "SMTP_HOST should be a server name such as smtp.gmail.com.")
+        if key == "SMTP_PASS" and "gmail" in (body.get("SMTP_HOST") or config_setup_value("SMTP_HOST")).lower():
+            value = value.replace(" ", "")  # Gmail shows app passwords in groups of four
+        updates[key] = value
+    if not updates:
+        raise WebError(400, "Nothing to save.")
+    config_setup.write_updates(updates)
+    return {"saved": sorted(updates), **config_setup.status()}
+
+
+def config_setup_value(key: str) -> str:
+    return os.getenv(key, "") or ""
 
 
 def api_monitor_start(state: AppState, body: dict[str, Any]) -> dict[str, Any]:

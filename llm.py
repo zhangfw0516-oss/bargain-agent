@@ -28,7 +28,7 @@ PROMPTS_DIR = Path(__file__).with_name("prompts")
 
 #: Hard per-request ceiling; a configured LLM_TIMEOUT above this is clamped.
 HARD_LLM_TIMEOUT = 45.0
-MAX_RESPONSE_TOKENS = 4096
+MAX_RESPONSE_TOKENS = 8192  # reasoning models spend part of this before answering
 MAX_INPUT_CHARS = 24_000
 
 

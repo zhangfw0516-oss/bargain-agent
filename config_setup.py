@@ -49,7 +49,7 @@ def env_path() -> Path:
         return Path(override)
     import config
 
-    return Path(config.__file__).with_name(".env")
+    return config.env_file()
 
 
 def _isolated() -> bool:

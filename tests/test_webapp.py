@@ -518,12 +518,30 @@ class TestSetup(WebCase):
         self.assertEqual(data["providers"]["shopping"], "serpapi")
         self.assertNotIn(EMAIL, json.dumps(data))
 
-    def test_only_recipient_can_be_saved(self):
-        self.assertEqual(self.client.post("/api/setup", {"SMTP_PASS": "x"})[0], 400)
+    def test_only_recipient_and_smtp_can_be_saved(self):
+        self.assertEqual(self.client.post("/api/setup", {"LLM_API_KEY": "x"})[0], 400)
         self.assertEqual(self.client.post("/api/setup", {"DEFAULT_NOTIFY_EMAIL": "nope"})[0], 400)
+        self.assertEqual(self.client.post("/api/setup", {})[0], 400)
         status, data = self.client.post("/api/setup", {"DEFAULT_NOTIFY_EMAIL": "new@example.com"})
         self.assertEqual(status, 200)
         self.assertIn("DEFAULT_NOTIFY_EMAIL=new@example.com", self.env_file.read_text(encoding="utf-8"))
+
+    def test_smtp_settings_saved_without_echo(self):
+        status, data = self.client.post("/api/setup", {
+            "SMTP_HOST": "smtp.gmail.com", "SMTP_PORT": "465", "SMTP_USER": "me@example.com",
+            "SMTP_PASS": "abcd efgh ijkl mnop", "SMTP_FROM": ""})
+        self.assertEqual(status, 200)
+        self.assertNotIn("abcdefghijklmnop", json.dumps(data))
+        text = self.env_file.read_text(encoding="utf-8")
+        self.assertIn("SMTP_PASS=abcdefghijklmnop", text)
+        self.assertIn("SMTP_PORT=465", text)
+        self.assertNotIn("SMTP_FROM=", text)
+
+    def test_setup_rejects_line_breaks_and_bad_port(self):
+        self.assertEqual(self.client.post("/api/setup", {"SMTP_USER": "a" + chr(10) + "LLM_API_KEY=x"})[0], 400)
+        self.assertEqual(self.client.post("/api/setup", {"SMTP_PORT": "abc"})[0], 400)
+        self.assertEqual(self.client.post("/api/setup", {"SMTP_HOST": "smtp.x.com/evil"})[0], 400)
+        self.assertNotIn("LLM_API_KEY", self.env_file.read_text(encoding="utf-8") if self.env_file.exists() else "")
 
 
 if __name__ == "__main__":

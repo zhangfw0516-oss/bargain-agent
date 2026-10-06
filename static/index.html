@@ -72,7 +72,7 @@
   button.danger:hover { background: var(--bad-soft); }
   button.lg { padding: 11px 20px; font-size: 14px; border-radius: 12px; }
   button.sm { padding: 5px 10px; font-size: 12px; border-radius: 8px; }
-  input[type=text], input[type=number], select, textarea { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong);
+  input[type=text], input[type=password], input[type=number], select, textarea { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong);
     border-radius: 10px; padding: 8px 10px; outline: none; transition: border-color .15s, box-shadow .15s; }
   input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
   textarea { width: 100%; min-height: 84px; resize: vertical; font-size: 15px; padding: 12px 14px; border-radius: 12px; }
@@ -272,11 +272,25 @@
     <section id="tab-settings" class="page hidden">
       <div class="card">
         <h2>Notification email</h2>
-        <div class="faint" style="margin-bottom:12px">Alerts are sent here. SMTP, model and provider keys live in the app's <code>.env</code> file.</div>
+        <div class="faint" style="margin-bottom:12px">Alerts are sent here.</div>
         <div class="row">
           <input type="text" id="setupEmail" placeholder="you@example.com" style="flex:1; min-width: 220px">
           <button onclick="doSetupSave()">Save</button>
         </div>
+      </div>
+      <div class="card">
+        <h2>Email sending</h2>
+        <div class="faint" style="margin-bottom:12px">The mailbox that sends your alerts (it can be the same address as above).
+          For Gmail: turn on 2-Step Verification, then create an <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">App password</a> and paste it below.
+          Saved only in this computer's <code>.env</code>; never shown again.</div>
+        <div id="smtpState" class="faint" style="margin-bottom:10px"></div>
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:10px">
+          <label class="field">Server<input type="text" id="smtpHost" value="smtp.gmail.com"></label>
+          <label class="field">Port<input type="number" id="smtpPort" value="465"></label>
+          <label class="field">Email account<input type="text" id="smtpUser" placeholder="you@gmail.com" autocomplete="off"></label>
+          <label class="field">App password<input type="password" id="smtpPass" placeholder="16-letter app password" autocomplete="new-password"></label>
+        </div>
+        <div class="row" style="margin-top:12px"><button onclick="doSmtpSave()">Save email sending</button></div>
       </div>
       <div class="card">
         <h2>Configuration</h2>
@@ -965,6 +979,8 @@ async function loadSetupStatus() {
     const missing = s.missing || [];
     $('setupStatus').textContent = missing.length ? 'Missing in .env: ' + missing.join(', ') : 'All required settings are present.';
     $('setupStatus').className = missing.length ? 'warn' : 'ok';
+    $('smtpState').textContent = s.smtp_ready ? '✓ Email sending is set up. Fill the form only to change it.' : 'Not set up yet — alerts cannot be emailed until you save these.';
+    $('smtpState').className = s.smtp_ready ? 'ok' : 'warn';
     const box = $('providerStatus'); clear(box);
     const p = s.providers || {};
     const rows = [['Shopping search', p.shopping], ['Fallback / detail', p.detail], ['Supplementary search', p.supplement], ['Page readers', p.extractors]];
@@ -982,6 +998,15 @@ async function doSetupSave() {
   await post('/api/setup', {DEFAULT_NOTIFY_EMAIL: $('setupEmail').value.trim()});
   $('setupEmail').value = '';
   toast('Notification email saved.', 'ok');
+  loadSetupStatus(); loadTasks();
+}
+
+async function doSmtpSave() {
+  const user = $('smtpUser').value.trim(), pass = $('smtpPass').value;
+  if (!user || !pass) { showError('Enter the email account and its app password.'); return; }
+  await post('/api/setup', {SMTP_HOST: $('smtpHost').value.trim(), SMTP_PORT: $('smtpPort').value.trim(), SMTP_USER: user, SMTP_PASS: pass, SMTP_FROM: user.includes('@') ? user : ''});
+  $('smtpPass').value = '';
+  toast('Email sending saved.', 'ok');
   loadSetupStatus(); loadTasks();
 }
 

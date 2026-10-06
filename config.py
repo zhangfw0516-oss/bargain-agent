@@ -7,6 +7,7 @@ Never prints secrets.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -23,6 +24,14 @@ except ImportError:  # distributable package: stdlib-only fallback
 
 _ENV_LOADED = False
 
+#: Where .env, the database and logs live: next to the executable in the packaged
+#: app (so they survive updates and stay writable), next to this file otherwise.
+APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+
+
+def env_file() -> Path:
+    return APP_DIR / ".env"
+
 
 class ConfigError(RuntimeError):
     """Missing or invalid configuration."""
@@ -32,7 +41,7 @@ def _load() -> None:
     global _ENV_LOADED
     if _ENV_LOADED:
         return
-    env_path = Path(__file__).with_name(".env")
+    env_path = env_file()
     if env_path.exists():
         load_dotenv(env_path)
     _ENV_LOADED = True
@@ -145,7 +154,10 @@ def database_path() -> Path:
     url = database_url()
     prefix = "sqlite:///"
     if url.startswith(prefix):
-        return Path(url[len(prefix) :]).resolve()
+        path = Path(url[len(prefix) :])
+        if getattr(sys, "frozen", False) and not path.is_absolute():
+            path = APP_DIR / path
+        return path.resolve()
     raise ConfigError("Only sqlite:/// URLs are supported")
 
 
