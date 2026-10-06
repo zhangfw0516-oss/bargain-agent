@@ -496,6 +496,7 @@ async function runFindJob(path, body, buttons) {
     $('findStages').classList.add('hidden');
     renderFind(state.response);
     $('findStatus').textContent = (state.response.recommendations || []).length + ' recommendations · ' + Math.round((Date.now() - started) / 1000) + 's';
+    saveLastFind(state.response);
   } catch (e) {
     $('findStages').classList.add('hidden');
     $('findStatus').textContent = '';
@@ -503,6 +504,19 @@ async function runFindJob(path, body, buttons) {
     buttons.forEach(b => b.disabled = false);
     loadTasks();
   }
+}
+// keep the last results when the page is reloaded or the user comes back from a shop
+function saveLastFind(response) {
+  try { localStorage.setItem('ba-last-find', JSON.stringify({description: $('findDescription').value, response, saved: Date.now()})); } catch (e) {}
+}
+function restoreLastFind() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('ba-last-find') || 'null'); } catch (e) {}
+  if (!saved || !saved.response || Date.now() - saved.saved > 24 * 3600 * 1000) return;
+  $('findDescription').value = saved.description || '';
+  findToken = saved.response.token;
+  try { renderFind(saved.response); } catch (e) { return; }
+  $('findStatus').textContent = (saved.response.recommendations || []).length + ' recommendations · from ' + new Date(saved.saved).toLocaleTimeString();
 }
 async function doFind() {
   const description = $('findDescription').value.trim();
@@ -975,6 +989,7 @@ async function boot() {
   let tab = 'find';
   try { tab = localStorage.getItem('ba-tab') || 'find'; } catch (e) {}
   showTab(['find', 'monitors', 'settings'].includes(tab) ? tab : 'find');
+  restoreLastFind();
   await api('/api/csrf');
   await loadTasks();
   loadSetupStatus();
