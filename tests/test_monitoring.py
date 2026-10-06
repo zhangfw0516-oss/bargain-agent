@@ -118,7 +118,7 @@ class TestMigrationV1(unittest.TestCase):
             rows = storage.list_task_sources(1, db_path=db)
             self.assertEqual([r["source_kind"] for r in rows], ["url", "url"])
             self.assertEqual([r["enabled"] for r in rows], [1, 0])
-            self.assertIn("Migrated", rows[0]["last_error"])
+            self.assertIsNone(rows[0]["last_error"])  # migration is not an error
 
             storage.init_db(db)  # idempotent
             self.assertEqual(len(storage.list_task_sources(1, db_path=db)), 2)

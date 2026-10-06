@@ -233,9 +233,7 @@ def _migrate_v1(conn: sqlite3.Connection) -> None:
         # Retailer-adapter and web-search sources both point at product detail pages,
         # which v1 reads through the page-extractor chain. Enabled flags are kept.
         conn.execute(
-            "UPDATE task_sources SET source_kind = ?, "
-            "last_error = COALESCE(last_error, 'Migrated: now checked through the page extractor.') "
-            "WHERE source_kind IN ('retailer_adapter', 'web_search')",
+            "UPDATE task_sources SET source_kind = ? WHERE source_kind IN ('retailer_adapter', 'web_search')",
             (SOURCE_URL,),
         )
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -1031,6 +1029,24 @@ def release_task_lock(task_id: int, owner: str, db_path: Path | None = None) -> 
 
 def list_task_locks(db_path: Path | None = None) -> list[dict[str, Any]]:
     return _fetchall(db_path, "SELECT * FROM task_locks ORDER BY task_id")
+
+
+def delete_stopped_task(task_id: int, db_path: Path | None = None) -> str:
+    """Remove a stopped task and everything recorded for it.
+
+    Only stopped tasks can be deleted, so a running check or a pending send can never
+    lose its task. Returns ``deleted``, ``missing`` or ``not_stopped``.
+    """
+    with _transaction(db_path) as conn:
+        row = conn.execute("SELECT status, send_in_flight FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if row is None:
+            return "missing"
+        if row["status"] != "stopped" or row["send_in_flight"]:
+            return "not_stopped"
+        for table in ("notification_events", "quotes", "task_sources", "offer_verdicts", "task_locks"):
+            conn.execute(f"DELETE FROM {table} WHERE task_id = ?", (task_id,))
+        conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        return "deleted"
 
 
 def list_events(task_id: int | None = None, db_path: Path | None = None) -> list[dict[str, Any]]:

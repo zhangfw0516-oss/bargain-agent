@@ -711,6 +711,16 @@ def api_check_due(state: AppState, body: dict[str, Any] | None = None) -> dict[s
     return {"checked": len(results), "results": results, "email_warning": state.email_warning()}
 
 
+def api_delete_task(state: AppState, task_id: int) -> dict[str, Any]:
+    """Delete a stopped monitor and its history (stop it first)."""
+    outcome = storage.delete_stopped_task(task_id, db_path=state.db_path)
+    if outcome == "missing":
+        raise WebError(404, f"Task {task_id} not found.")
+    if outcome == "not_stopped":
+        raise WebError(400, "Stop the monitor before deleting it.")
+    return {"deleted": task_id}
+
+
 def api_status_change(state: AppState, task_id: int, status: str) -> dict[str, Any]:
     if storage.get_task(task_id, db_path=state.db_path) is None:
         raise WebError(404, f"Task {task_id} not found.")
@@ -836,6 +846,7 @@ _POST_ROUTES: dict[str, Callable[[AppState, dict[str, Any]], dict[str, Any]]] = 
 _TASK_ACTIONS: dict[str, Callable[[AppState, int, dict[str, Any]], dict[str, Any]]] = {
     "check": api_check,
     "pause": lambda s, tid, _b: api_status_change(s, tid, "paused"),
+    "delete": lambda s, tid, _b: api_delete_task(s, tid),
     "resume": lambda s, tid, _b: api_status_change(s, tid, "active"),
     "stop": lambda s, tid, _b: api_status_change(s, tid, "stopped"),
     "modify": api_modify,

@@ -469,6 +469,18 @@ class TestTaskLifecycle(WebCase):
             self.assertEqual(self.client.post(f"/api/tasks/{tid}/{action}", {})[1]["task"]["status"], status)
         self.assertEqual(self.client.post(f"/api/tasks/{tid}/check", {"confirm": True})[1]["reason"], "task_stopped")
 
+    def test_only_stopped_monitors_can_be_deleted(self):
+        _, data = self.create_product_task()
+        tid = data["created"]
+        self.client.post(f"/api/tasks/{tid}/check", {"confirm": True})
+        self.assertEqual(self.client.post(f"/api/tasks/{tid}/delete", {})[0], 400)
+        self.client.post(f"/api/tasks/{tid}/stop", {})
+        self.assertEqual(self.client.post(f"/api/tasks/{tid}/delete", {})[1], {"deleted": tid})
+        self.assertEqual(self.client.get(f"/api/tasks/{tid}")[0], 404)
+        self.assertEqual(storage.list_quotes(task_id=tid, db_path=self.db), [])
+        self.assertEqual(storage.list_task_sources(tid, db_path=self.db), [])
+        self.assertEqual(self.client.post(f"/api/tasks/{tid}/delete", {})[0], 404)
+
     def test_source_toggle_and_ownership(self):
         _, data = self.create_product_task()
         tid, sid = data["created"], data["task"]["sources"][0]["id"]

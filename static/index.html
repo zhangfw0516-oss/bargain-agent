@@ -742,6 +742,7 @@ async function loadTasks() {
     if (t.status === 'active') { mk('Check now', () => doCheck(t.id)); mk('Pause', () => doStatus(t.id, 'pause')); }
     if (t.status === 'paused') mk('Resume', () => doStatus(t.id, 'resume'));
     if (t.status !== 'stopped') mk('Stop', () => doStatus(t.id, 'stop'), 'danger');
+    if (t.status === 'stopped') mk('Delete', () => doDelete(t.id, t.product_name), 'danger');
     card.appendChild(actions);
     box.appendChild(card);
   }
@@ -760,6 +761,13 @@ async function runDueChecks() {
   if (!confirm('Due checks may send real notification emails. Continue?')) return;
   const r = await post('/api/check/due', {confirm: true});
   toast(r.checked ? r.checked + ' monitor(s) checked.' : 'Nothing is due right now.');
+  loadTasks();
+}
+async function doDelete(id, name) {
+  if (!confirm('Delete "' + name + '" and its price history? This cannot be undone.')) return;
+  await post('/api/tasks/' + id + '/delete', {});
+  if (currentDetailId === id) closeDetail();
+  toast('Monitor deleted.', 'ok');
   loadTasks();
 }
 async function doStatus(id, action) { await post('/api/tasks/' + id + '/' + action, {}); loadTasks(); if (currentDetailId === id) openDetail(id); }
@@ -797,7 +805,9 @@ async function openDetail(id) {
     if (latest && latest.in_stock === false) meta.appendChild(badge('Out of stock', 'bad'));
     if (s.consecutive_empty > 1) meta.appendChild(badge('Not found in last ' + s.consecutive_empty + ' checks', 'warn'));
     mid.appendChild(meta);
-    if (s.last_error) mid.appendChild(el('div', s.last_error, 'faint bad'));
+    const migrated = (s.last_error || '').startsWith('Migrated:');
+    if (s.last_error && !migrated) mid.appendChild(el('div', s.last_error, 'faint bad'));
+    else if (!s.last_checked_at) mid.appendChild(el('div', 'Not checked yet.', 'faint'));
     else if (s.last_checked_at) mid.appendChild(el('div', 'checked ' + when(s.last_checked_at), 'faint'));
     const ship = el('div', null, 'ship');
     ship.appendChild(el('span', 'Shipping'));
@@ -824,6 +834,11 @@ async function openDetail(id) {
   $('newDrop').value = t.drop_percent || '';
   $('newShipping').checked = !!t.include_shipping;
   renderChart($('priceChart'), t.history, t.target_price);
+  if (!t.history.length) {
+    $('priceChart').textContent = t.status === 'stopped'
+      ? 'This monitor was never checked and is stopped, so there is no price information. Resume it to start checking, or delete it.'
+      : 'No checks yet. Use "Check now" on the monitor card, or wait for the next scheduled check.';
+  }
   const hist = $('historyRows'); clear(hist);
   for (const q of t.history) {
     const tr = el('tr');
