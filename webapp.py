@@ -365,6 +365,7 @@ def api_tasks(state: AppState) -> dict[str, Any]:
         "email_warning": state.email_warning(),
         "api_usage": storage.api_usage_today(db_path=state.db_path),
         "serpapi_daily_limit": config.serpapi_daily_max_calls(),
+        "daily_limits": {"serper": config.serper_daily_max_calls(), "serpapi": config.serpapi_daily_max_calls()},
     }
 
 
