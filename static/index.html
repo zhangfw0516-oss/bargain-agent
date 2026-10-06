@@ -385,6 +385,16 @@ function link(url, text) {
   const a = el('a', text || url); a.href = ok; a.target = '_blank'; a.rel = 'noopener noreferrer';
   return a;
 }
+// Google Shopping product-panel links (ibp=oshop) only work inside the Google session that
+// produced them; opened directly they show "no product details". Search the merchant instead.
+function shopUrl(url, title, merchant) {
+  try {
+    const u = new URL(url);
+    if (!/(^|\.)google\.[a-z.]+$/.test(u.hostname) || u.searchParams.get('ibp') !== 'oshop') return url;
+    const q = [title || u.searchParams.get('q'), merchant].filter(Boolean).join(' ');
+    return 'https://www.google.com/search?q=' + encodeURIComponent(q) + '&gl=nz';
+  } catch (e) { return url; }
+}
 function money(price, currency) { return price ? (currency || '?') + ' ' + price : 'price unknown'; }
 function priceEl(price, currency) {
   const node = el('div', null, 'price');
@@ -567,7 +577,7 @@ function renderFind(data) {
     const btn = el('button', 'Compare & monitor');
     btn.onclick = () => doPreview(rec);
     actions.appendChild(btn);
-    actions.appendChild(link(rec.link, 'View listing ↗'));
+    actions.appendChild(link(shopUrl(rec.link, rec.title, rec.merchant), 'View listing ↗'));
     card.appendChild(actions);
     box.appendChild(card);
   }
@@ -578,7 +588,7 @@ function offerRow(o, {best, checkbox} = {}) {
   const row = el('div', null, 'offer' + (best ? ' best' : ''));
   if (checkbox) row.appendChild(checkbox); else row.appendChild(el('span', best ? '★' : '•', best ? 'ok' : 'faint'));
   const mid = el('div');
-  const name = el('div', null, 'name'); name.appendChild(link(o.link, o.merchant || 'seller')); mid.appendChild(name);
+  const name = el('div', null, 'name'); name.appendChild(link(shopUrl(o.link, o.title, o.merchant), o.merchant || 'seller')); mid.appendChild(name);
   const meta = el('div', null, 'meta');
   meta.appendChild(badge(o.trusted ? 'Trusted' : 'Unverified', o.trusted ? 'ok' : 'warn'));
   if (o.verified !== undefined) meta.appendChild(badge(o.verified ? 'AI: same product' : 'Not AI-checked', o.verified ? 'info' : ''));
@@ -797,7 +807,7 @@ async function openDetail(id) {
     toggle.onclick = async () => { await post('/api/tasks/' + id + '/sources/' + (s.enabled ? 'disable' : 'enable'), {source_id: s.id}); openDetail(id); };
     row.appendChild(toggle);
     const mid = el('div');
-    const name = el('div', null, 'name'); name.appendChild(link(s.url, s.retailer || s.url)); mid.appendChild(name);
+    const name = el('div', null, 'name'); name.appendChild(link(shopUrl(s.url, t.product_name, s.retailer), s.retailer || s.url)); mid.appendChild(name);
     const meta = el('div', null, 'meta');
     meta.appendChild(badge(s.source_kind === 'serpapi_product' ? 'Google Shopping' : 'Product page'));
     if (latest && latest.trusted === false) meta.appendChild(badge('Unverified', 'warn'));
