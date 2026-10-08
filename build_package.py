@@ -1,6 +1,12 @@
 """Build the Windows package: dist/BargainAgent-windows.zip.
 
-    venv\\Scripts\\python.exe build_package.py
+    venv\\Scripts\\python.exe build_package.py            # exe package
+    venv\\Scripts\\python.exe build_package.py --source   # source packages
+
+``--source`` zips every committed file (git archive of HEAD, so no venv, database,
+logs or .env) twice: ``BargainAgent-source.zip`` without keys (safe to publish or
+hand in) and ``BargainAgent-source-with-keys.zip`` with the same .env as the exe
+package. Commit first: uncommitted changes are not included.
 
 Bundles Python and the app with PyInstaller (one folder, no install needed) and writes
 the package's own .env from this checkout's .env:
@@ -85,7 +91,49 @@ def package_env(source: Path) -> str:
     return "\n".join(lines) + "\n"
 
 
+SOURCE_GUIDE = """Bargain Agent — 源代码版使用说明
+================================
+
+需要：Windows + Python 3.10 或更新版本（https://www.python.org/downloads/ ，安装时勾选 "Add python.exe to PATH"）。
+
+1. 解压整个文件夹。
+2. 双击 start.bat。第一次会自动创建 Python 环境并安装依赖（几分钟），然后打开浏览器 http://127.0.0.1:8765/ 。
+   - 不带 key 的版本：会先用记事本打开 .env，填好 LLM_API_KEY 和 SERPER_API_KEY（或 SERPAPI_API_KEY）后保存，再双击 start.bat。
+   - 带 key 的版本：直接就能用。
+3. Settings 页填收件邮箱和发信邮箱（Gmail 用应用专用密码），才能收到降价提醒。
+
+开发者：README.md 有架构说明；测试：venv\\Scripts\\python.exe -m unittest discover -s tests
+"""
+
+
+def build_source() -> int:
+    if subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT,
+                      capture_output=True, text=True).stdout.strip():
+        print("Note: uncommitted changes are NOT included (the package is built from the last commit).")
+    BUILD.mkdir(exist_ok=True)
+    DIST.mkdir(exist_ok=True)
+    tracked = BUILD / "source.zip"
+    run("git", "archive", "--format=zip", f"--prefix={NAME}/", "-o", str(tracked), "HEAD")
+    env = package_env(ROOT / ".env") if (ROOT / ".env").exists() else None
+    for suffix, with_keys in (("", False), ("-with-keys", True)):
+        if with_keys and env is None:
+            continue
+        archive = DIST / f"{NAME}-source{suffix}.zip"
+        archive.unlink(missing_ok=True)
+        with zipfile.ZipFile(tracked) as src, zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as out:
+            for item in src.infolist():
+                out.writestr(item, src.read(item))
+            out.writestr(f"{NAME}/源代码版使用说明.txt", SOURCE_GUIDE)
+            if with_keys:
+                out.writestr(f"{NAME}/.env", env)
+        print(f"Package: {archive} ({archive.stat().st_size / 1e6:.1f} MB)" + (" — contains API keys" if with_keys else ""))
+    tracked.unlink()
+    return 0
+
+
 def main() -> int:
+    if "--source" in sys.argv[1:]:
+        return build_source()
     source_env = ROOT / ".env"
     if not source_env.exists():
         print("No .env in this checkout; fill it in first.")

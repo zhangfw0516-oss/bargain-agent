@@ -54,6 +54,8 @@ Open http://127.0.0.1:8765/ (or double-click `start.bat`). Checks and continuous
 
 Unzip and double-click `BargainAgent.exe`; no Python needed. `.env`, the database and logs live next to the exe. The package's `.env` copies the model and provider keys from this checkout (anyone with the zip can read them, so share it only with people you trust and rotate the keys if it leaks) but never the sending mailbox or recipient: each person sets their own email on the Settings page. Daily search caps are lowered (`SERPER_DAILY_MAX_CALLS=60`, `SERPAPI_DAILY_MAX_CALLS=5`) because every copy shares the same quota. `BargainAgent.exe --check-due` is the Task Scheduler entry.
 
+`build_package.py --source` zips the last commit as source code: `BargainAgent-source.zip` (no keys; safe to publish or hand in) and `BargainAgent-source-with-keys.zip` (same `.env` as the exe package). On a new computer, `start.bat` creates the venv and installs the requirements on first run.
+
 ### Monitoring without keeping the window open
 
 `check-due.bat` runs `main.py check-due` once: every due task is checked, a summary is appended to `logs\check-due.log`, and it exits. Register it with Windows Task Scheduler to run every 30 minutes (each task still only checks at its own frequency):
