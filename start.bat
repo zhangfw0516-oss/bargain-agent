@@ -13,7 +13,8 @@ if not exist "venv\Scripts\python.exe" (
   )
   "venv\Scripts\python.exe" -m pip install --disable-pip-version-check -r requirements.txt
   if errorlevel 1 (
-    echo Installing the requirements failed; check the internet connection and run start.bat again.
+    echo Installing the requirements failed. Check the internet connection. If the error mentions
+    echo "Long Path", move this folder to a short path such as C:\BargainAgent. Then run start.bat again.
     rmdir /s /q venv
     pause
     exit /b 1
