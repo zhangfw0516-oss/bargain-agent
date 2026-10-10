@@ -55,6 +55,9 @@ GUIDE = """Bargain Agent — 使用说明
    不填也能搜索和比价，只是不会收到邮件提醒。
 4. Find 页描述想买的东西（中英文都行），选一个结果点 Compare & monitor 建立价格监控。
 
+演示模式：双击"演示模式.bat"。打开后有 4 个带 30 天价格历史的监控（历史是围绕真实价格模拟的，
+页面顶部有 Demo data 提示），搜索和 Check now 仍是真实的。"重置演示数据.bat"让历史截止到今天。
+
 不开窗口也自动检查价格（可选）：
    在本文件夹打开 PowerShell，运行：
    schtasks /Create /SC MINUTE /MO 30 /TN "BargainAgent check-due" /TR "\\"%CD%\\BargainAgent.exe\\" --check-due"
@@ -146,12 +149,16 @@ def main() -> int:
         "--name", NAME, "--distpath", str(BUILD / "dist"), "--workpath", str(BUILD / "work"),
         "--specpath", str(BUILD),
         "--add-data", f"{ROOT / 'static'};static", "--add-data", f"{ROOT / 'prompts'};prompts",
-        "--collect-submodules", "agents", "--collect-submodules", "sources",
+        "--add-data", f"{ROOT / 'demo' / 'listings.json'};demo",
+        "--collect-submodules", "agents", "--collect-submodules", "sources", "--collect-submodules", "demo",
         "--collect-submodules", "langgraph", "--collect-submodules", "langchain_core",
         str(ROOT / "launcher.py"))
     app = BUILD / "dist" / NAME
     (app / ".env").write_text(package_env(source_env), encoding="utf-8")
     (app / "使用说明.txt").write_text(GUIDE, encoding="utf-8")
+    for name, args in (("演示模式.bat", "--demo"), ("重置演示数据.bat", "--demo --reset")):
+        lines = ["@echo off", f'"%~dp0BargainAgent.exe" {args}']
+        (app / name).write_bytes("".join(line + "\r\n" for line in lines).encode("ascii"))
     DIST.mkdir(exist_ok=True)
     archive = DIST / f"{NAME}-windows.zip"
     archive.unlink(missing_ok=True)
@@ -162,7 +169,43 @@ def main() -> int:
     print(f"\nPackage: {archive} ({archive.stat().st_size / 1e6:.0f} MB)")
     print("It contains the model and provider API keys from .env — share it only with people you trust.")
     shutil.rmtree(BUILD / "work", ignore_errors=True)
+    if "--team" in sys.argv[1:]:
+        build_team(app)
     return 0
+
+
+TEAM_GUIDE = """Bargain Agent 演示包
+====================
+
+1. 把整个压缩包解压到桌面（不要在压缩包里直接运行）。
+2. 打开"演示稿"文件夹，用浏览器打开写着你名字的那个文件：你的台词（英文）、每句话时屏幕上做什么、
+   你接在谁后面、讲完交给谁。
+3. 排练：双击 BargainAgent 文件夹里的"演示模式.bat"，浏览器会打开演示页面
+   （黑色窗口不要关）。Windows 提示"已保护你的电脑"时点"更多信息" -> "仍要运行"。
+   - 页面顶部的 Demo data 提示是正常的：价格历史是演示数据，商品和当前价格是真的。
+   - 搜索（Find）是真实的，需要联网，每次会用掉一点共享额度，每人每天排练别超过 10 次搜索。
+   - 不要在 Settings 里改设置。排练时自己建的监控可以 Stop 后 Delete；
+     4 个演示监控如果误删了，双击"重置演示数据.bat"就能恢复。
+4. 正式演示用一台电脑，按演示稿的顺序进行。
+"""
+
+
+def build_team(app: Path) -> None:
+    scripts = sorted((ROOT / "presentation" / "team").glob("*.html"))
+    if not scripts:
+        print("No presentation/team/*.html; run presentation/build_presentation.py first.")
+        return
+    top = "BargainAgent-Demo"  # ASCII: batch files misread non-ASCII folder names on some systems
+    archive = DIST / "BargainAgent-team-demo.zip"
+    archive.unlink(missing_ok=True)
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{top}/先看我.txt", TEAM_GUIDE)
+        for path in scripts:
+            zf.write(path, f"{top}/演示稿/{path.name}")
+        for path in sorted(app.rglob("*")):
+            if path.is_file() and path.suffix != ".db":
+                zf.write(path, f"{top}/{NAME}/{path.relative_to(app).as_posix()}")
+    print(f"Team package: {archive} ({archive.stat().st_size / 1e6:.0f} MB) — contains API keys")
 
 
 if __name__ == "__main__":
