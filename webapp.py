@@ -82,8 +82,10 @@ class Services:
 class AppState:
     """Shared server state: one DB path, services, recent find results."""
 
-    def __init__(self, db_path: Path, services: Services | None = None):
+    def __init__(self, db_path: Path, services: Services | None = None, demo: bool = False):
         self.db_path = db_path
+        #: Presentation database (demo/seed_demo.py): the UI shows a banner.
+        self.demo = demo
         self.services = services or Services()
         self.csrf_token = secrets.token_urlsafe(24)
         self._lock = threading.Lock()
@@ -392,6 +394,7 @@ def api_tasks(state: AppState) -> dict[str, Any]:
         "api_usage": storage.api_usage_today(db_path=state.db_path),
         "serpapi_daily_limit": config.serpapi_daily_max_calls(),
         "daily_limits": {"serper": config.serper_daily_max_calls(), "serpapi": config.serpapi_daily_max_calls()},
+        "demo": state.demo,
     }
 
 
@@ -1014,12 +1017,13 @@ def make_handler(state: AppState, port: int):
 INDEX_HTML = ""
 
 
-def serve(db_path: Path | None = None, port: int = DEFAULT_PORT, services: Services | None = None) -> ThreadingHTTPServer:
+def serve(db_path: Path | None = None, port: int = DEFAULT_PORT, services: Services | None = None,
+          demo: bool = False) -> ThreadingHTTPServer:
     global INDEX_HTML
     INDEX_HTML = Path(__file__).with_name("static").joinpath("index.html").read_text(encoding="utf-8")
     db_path = db_path or config.database_path()
     storage.init_db(db_path)
-    state = AppState(db_path=db_path, services=services)
+    state = AppState(db_path=db_path, services=services, demo=demo)
     httpd = ThreadingHTTPServer((HOST, port), make_handler(state, port))
     httpd.app_state = state  # type: ignore[attr-defined]
     httpd.db_path = db_path  # type: ignore[attr-defined]
@@ -1030,6 +1034,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Local web interface for the bargain agent.")
     parser.add_argument("--db-path", default=None, help="Database file (default: DATABASE_URL).")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--demo", action="store_true", help="Show the demo-data banner (use with demo.db).")
     args = parser.parse_args()
 
     import socket
@@ -1040,7 +1045,7 @@ def main() -> int:
             print(f"Port {args.port} is already in use — another Bargain Agent window is probably running.")
             return 1
 
-    httpd = serve(Path(args.db_path) if args.db_path else None, port=args.port)
+    httpd = serve(Path(args.db_path) if args.db_path else None, port=args.port, demo=args.demo)
     print(f"Bargain Agent web UI: http://{HOST}:{args.port}/")
     print(f"Database: {httpd.db_path}")  # type: ignore[attr-defined]
     print("Notifications are real emails. Press Ctrl+C to stop.")

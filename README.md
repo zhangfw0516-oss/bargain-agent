@@ -56,6 +56,10 @@ Unzip and double-click `BargainAgent.exe`; no Python needed. `.env`, the databas
 
 `build_package.py --source` zips the last commit as source code: `BargainAgent-source.zip` (no keys; safe to publish or hand in) and `BargainAgent-source-with-keys.zip` (same `.env` as the exe package). On a new computer, `start.bat` creates the venv and installs the requirements on first run.
 
+### Presentation mode
+
+`start-demo.bat` opens the UI on `demo.db`: monitors with 30 days of price history, so the chart and the 30-day insight show without weeks of monitoring. Products, merchants, Google product ids and the latest prices are real (`demo/listings.json`); earlier points are simulated around them, and the UI shows a "Demo data" banner. Find and "Check now" stay live; targets are set below the current price, so a check does not send an email. `start-demo.bat reset` rebuilds the history so it ends today; `python -m demo.seed_demo --refresh` searches again (4 Serper searches).
+
 ### Monitoring without keeping the window open
 
 `check-due.bat` runs `main.py check-due` once: every due task is checked, a summary is appended to `logs\check-due.log`, and it exits. Register it with Windows Task Scheduler to run every 30 minutes (each task still only checks at its own frequency):

@@ -202,6 +202,7 @@
 
 <main>
   <div class="page">
+    <div id="demoBanner" class="banner warn hidden">Demo data: price history is simulated around real current prices. Find and "Check now" use live data.</div>
     <div id="emailWarning" class="banner warn hidden"></div>
     <div id="globalError" class="banner bad hidden"></div>
 
@@ -739,6 +740,7 @@ async function loadTasks() {
     if (usage[name] || name === 'serper') bar.appendChild(el('span', (name === 'serper' ? 'Serper ' : 'SerpApi ') + (usage[name] || 0) + '/' + (limits[name] ?? '?') + ' today', 'pill'));
   }
   renderMonitor(data.monitor);
+  $('demoBanner').classList.toggle('hidden', !data.demo);
   $('taskCount').textContent = data.tasks.length;
   const box = $('taskRows'); clear(box);
   if (!data.tasks.length) {

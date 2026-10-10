@@ -1,0 +1,49 @@
+{
+  "fetched_at": "2026-10-10T09:41:38+00:00",
+  "products": {
+    "Fitbit Charge 6": [
+      {
+        "title": "Fitbit Charge 6 Fitness Tracker",
+        "merchant": "PB Tech",
+        "price": "198.00",
+        "link": "https://www.google.com/search?ibp=oshop&q=Fitbit+Charge+6+fitness+tracker&prds=localAnnotatedOfferId:1,catalogid:13112130148546382969,gpcid:7263715684349298595,pvo:2,pvt:hg&gl=nz&udm=28&pvorigin=2",
+        "product_id": "13112130148546382969"
+      },
+      {
+        "title": "Fitbit Charge 6 Fitness Tracker - Silver Aluminum Case with Porcelain Band (GPS, Bluetooth) at Harvey Norman",
+        "merchant": "Harvey Norman New Zealand",
+        "price": "220.00",
+        "link": "https://www.google.co.nz/search?ibp=oshop&q=Fitbit+Charge+6&prds=productid:18339555341368487758&gl=nz&udm=28",
+        "product_id": "18339555341368487758"
+      }
+    ],
+    "Philips 3000 Series Airfryer": [
+      {
+        "title": "Philips 3000 Series 6.2L Airfryer",
+        "merchant": "Noel Leeming",
+        "price": "160.00",
+        "link": "https://www.google.com/search?ibp=oshop&q=Philips+3000+Series+Airfryer&prds=localAnnotatedOfferId:1,catalogid:5449572669566595725,gpcid:17889926336831511418,pvo:2,pvt:hg&gl=nz&udm=28&pvorigin=2",
+        "product_id": "5449572669566595725"
+      }
+    ],
+    "Kindle Paperwhite 16GB": [
+      {
+        "title": "Amazon Kindle Paperwhite 16GB 2024",
+        "merchant": "PB Tech",
+        "price": "445.00",
+        "link": "https://www.google.com/search?ibp=oshop&q=Kindle+Paperwhite+16GB&prds=localAnnotatedOfferId:1,catalogid:519652814591809605,gpcid:6550164626169786403,pvo:2,pvt:hg&gl=nz&udm=28&pvorigin=2",
+        "product_id": "519652814591809605"
+      }
+    ],
+    "Sony WH-1000XM5": [
+      {
+        "title": "Sony WF-1000XM5 True Wireless Noise Cancelling Headphones",
+        "merchant": "Harvey Norman New Zealand",
+        "price": "388.00",
+        "link": "https://www.google.com/search?ibp=oshop&q=Sony+WH-1000XM5&prds=localAnnotatedOfferId:1,catalogid:11437545591292469550,gpcid:906517877401907048,pvo:2,pvt:hg&gl=nz&udm=28&pvorigin=2",
+        "product_id": "11437545591292469550"
+      }
+    ]
+  },
+  "note": "Fitbit Charge 6: from the real monitor checked on 2026-10-06; the others from Serper on the fetch date."
+}
