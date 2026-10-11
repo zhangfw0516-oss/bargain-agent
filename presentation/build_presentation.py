@@ -111,9 +111,9 @@ SEGMENTS = [
         ("Whether something is a deal is decided by code, not by the model. It happens when the cheapest same-product offer from a trusted shop reaches your target price, or, if you choose, when the price drops by a set percentage. Offers from unknown or overseas sellers are shown, but they never trigger an email.",
          "指 When price is / Target / Or drop % 三个设置。"),
         ("Here is a real alert email the system sent.",
-         "切到 Gmail 标签页，打开提前准备好的提醒邮件（标题以 [Bargain Agent] 开头）。"),
-        ("The subject tells you the product, the price and the shop. Inside you get the price, the thirty-day context, the shop link and a short summary from the deal-summary agent. One price drop sends one email. If the next check finds the same deal again, you are not spammed.",
-         "依次指邮件标题、价格那一行、30 天最低/平均、商家链接。"),
+         "切到 Gmail 标签页，打开提醒邮件 “[Bargain Agent] 降价提醒：Philips 3000 Series Airfryer — NZD 160.00 @ Noel Leeming”。"),
+        ("The subject tells you the product, the price and the shop. Inside you get the current price, your target, how today's price compares with the last thirty days, and the shop. One price drop sends one email. If the next check finds the same deal again, you are not spammed.",
+         "依次指邮件标题、Current price 和 Your threshold、Price history 那一行（30 天最低/平均）、Retailer。不要点 Source 链接。"),
         ("To make sure all of this behaves correctly, we have three hundred and fifty-eight automated tests. They run offline in about two minutes and cover every agent, the data providers using recorded responses, the scheduler, the database migrations and the web API.",
          "切到终端窗口，展示提前跑好的 <code>Ran 358 tests … OK</code>。"),
     ]),
@@ -343,7 +343,7 @@ EVAL = """<section class="panel" aria-labelledby="eval-h"><h2 id="eval-h">评估
 
 PREP = """<div class="grid2"><section class="panel" aria-labelledby="prep-h"><h2 id="prep-h">演示前准备（组长电脑）</h2><ol>
 <li><b>用演示模式启动</b>：双击 <code>start-demo.bat</code>（打包版是“演示模式.bat”）。想让价格历史截止到当天，先运行 <code>start-demo.bat reset</code>。里面有 4 个带 30 天价格历史的监控，页面顶部的 “Demo data” 提示在 Gang 的台词里有说明。</li>
-<li><b>准备提醒邮件</b>：Gmail 里搜 “Bargain Agent”，找到之前收到的提醒邮件并加星标。找不到的话，演示前把某个监控的目标价改到现价以上，点 Check now 收一封真邮件，再把目标价改回去。现场不触发邮件。</li>
+<li><b>提醒邮件已准备好</b>：Gmail 收件箱里的 “[Bargain Agent] 降价提醒：Philips 3000 Series Airfryer — NZD 160.00 @ Noel Leeming”（2026-10-11 发出），建议加星标。现场不触发邮件。</li>
 <li><b>当天早上</b>跑一次 “Noise cancelling headphones under NZD 400”，确认 key 和额度正常。</li>
 <li>终端里提前运行 <code>.\\venv\\Scripts\\python.exe -m unittest discover -s tests</code>，保留 “Ran 358 tests … OK” 的窗口。</li>
 <li>浏览器标签按顺序开好：① 本页（架构图、评估表）② App <code>http://127.0.0.1:8765/</code> ③ Gmail 提醒邮件 ④ 终端。缩放 125%，关掉通知。</li>
