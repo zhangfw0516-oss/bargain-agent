@@ -162,7 +162,7 @@ def lead_beats() -> list[str]:
 async def synthesize(beats: list[str], voice: str) -> list[Path]:
     import edge_tts
 
-    audio = OUT / "audio"
+    audio = OUT / "audio" / voice
     audio.mkdir(parents=True, exist_ok=True)
     paths = []
     for n, text in enumerate(beats):
@@ -196,7 +196,10 @@ async def record(beats: list[str], clips: list[Path]) -> tuple[Path, list[float]
     slides.write_text(SLIDES, encoding="utf-8")
     raw = OUT / "raw"
     for old in raw.glob("*.webm") if raw.exists() else []:
-        old.unlink()
+        try:
+            old.unlink()
+        except OSError:  # still open in a player; the new recording gets its own name
+            pass
     starts: list[float] = []
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(channel="msedge", headless=True)
@@ -241,8 +244,8 @@ async def record(beats: list[str], clips: list[Path]) -> tuple[Path, list[float]
     return Path(video_path), starts
 
 
-def mux(video: Path, clips: list[Path], starts: list[float]) -> Path:
-    out = OUT / "fengwei-part.mp4"
+def mux(video: Path, clips: list[Path], starts: list[float], label: str) -> Path:
+    out = OUT / f"fengwei-part-{label}.mp4"
     inputs = ["-i", str(video)]
     for clip in clips:
         inputs += ["-i", str(clip)]
@@ -254,13 +257,34 @@ def mux(video: Path, clips: list[Path], starts: list[float]) -> Path:
     return out
 
 
+def own_voice(beats: list[str]) -> list[Path]:
+    """The presenter's recordings (presentation/record_voice.py), trimmed and levelled."""
+    folder = OUT / "voice"
+    clips = []
+    for n in range(len(beats)):
+        found = sorted(p for p in folder.glob(f"{n:02d}.*") if p.suffix in (".webm", ".ogg", ".wav", ".m4a", ".mp3")
+                       and not p.name.endswith(".clean.wav"))
+        if not found:
+            raise SystemExit(f"Line {n + 1} has no recording yet; run presentation/record_voice.py.")
+        clean = folder / f"{n:02d}.clean.wav"
+        trim = "silenceremove=start_periods=1:start_threshold=-45dB"
+        subprocess.run([ffmpeg(), "-y", "-i", str(found[-1]), "-af",
+                        f"{trim},areverse,{trim},areverse,loudnorm=I=-16:TP=-1.5:LRA=11", "-ac", "1", "-ar", "48000",
+                        str(clean)], check=True, capture_output=True)
+        clips.append(clean)
+    return clips
+
+
 def main() -> int:
     voice = sys.argv[sys.argv.index("--voice") + 1] if "--voice" in sys.argv else VOICE
     beats = lead_beats()
     if len(beats) != len(CUES):
         raise SystemExit(f"{len(beats)} lines but {len(CUES)} cues; update CUES.")
     OUT.mkdir(exist_ok=True)
-    clips = asyncio.run(synthesize(beats, voice))
+    if "--own-voice" in sys.argv:
+        voice, clips = "own-voice", own_voice(beats)
+    else:
+        clips = asyncio.run(synthesize(beats, voice))
     total = sum(duration(c) for c in clips) + GAP * len(clips)
     print(f"voice {voice}: {len(clips)} lines, about {total / 60:.1f} min")
     server = start_server()
@@ -268,7 +292,7 @@ def main() -> int:
         video, starts = asyncio.run(record(beats, clips))
     finally:
         server.terminate()
-    out = mux(video, clips, starts)
+    out = mux(video, clips, starts, voice)
     (OUT / "timing.json").write_text(json.dumps({"voice": voice, "starts": starts}, indent=2), encoding="utf-8")
     print(f"video: {out} ({out.stat().st_size / 1e6:.1f} MB, {duration(out) / 60:.1f} min)")
     return 0
