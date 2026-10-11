@@ -32,3 +32,6 @@ Thumbs.db
 .pytest_cache/
 logs/
 .claude/
+
+# Generated narrated video (presentation/lead_video.py)
+presentation/lead-video/
