@@ -200,6 +200,8 @@ class AppState:
         return email if email and "@" in email else None
 
     def email_warning(self) -> str | None:
+        if not self.notify_email and self.demo:
+            return "Demo mode: no notification email is set, so monitors work but alerts are not emailed."
         if not self.notify_email:
             return "No notification email is set; add one in Settings before creating a task."
         return f"A real notification email may be sent to {self.notify_email} when a deal is found."
@@ -280,10 +282,16 @@ def _choice(value: Any, allowed: tuple[str, ...], name: str, default: str | None
     return value
 
 
+#: Recipient for monitors created in demo mode without a configured email; never deliverable.
+DEMO_EMAIL = "demo@example.invalid"
+
+
 def _require_email(state: AppState) -> str:
     email = state.notify_email
+    if not email and state.demo:  # rehearsal copies have no recipient; monitors still work
+        return DEMO_EMAIL
     if not email:
-        raise WebError(400, "No notification email is configured; set it in Setup first.")
+        raise WebError(400, "No notification email is set. Add one on the Settings page, then try again.")
     return email
 
 

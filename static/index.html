@@ -444,6 +444,7 @@ function showError(msg) {
   const box = $('globalError'); clear(box);
   if (!msg) { box.classList.add('hidden'); return; }
   box.appendChild(el('span', msg)); box.classList.remove('hidden');
+  toast(msg, 'bad');  // the banner can be hidden behind an open drawer
 }
 function getCookie(name) {
   for (const part of (document.cookie || '').split(';')) {

@@ -55,6 +55,17 @@ class TestDemoSeed(unittest.TestCase):
         storage.init_db(other)
         self.assertNotEqual(storage.instance_id(other), storage.instance_id(self.db))
 
+    def test_demo_mode_creates_monitors_without_an_email(self):
+        storage.init_db(self.db)
+        with patch.dict("os.environ", {"DEFAULT_NOTIFY_EMAIL": ""}), \
+                patch("config._get", side_effect=lambda name: "" if name == "DEFAULT_NOTIFY_EMAIL" else None):
+            demo = webapp.AppState(db_path=self.db, demo=True)
+            self.assertEqual(webapp._require_email(demo), webapp.DEMO_EMAIL)
+            self.assertTrue(demo.email_warning().startswith("Demo mode"))
+            with self.assertRaises(webapp.WebError) as ctx:
+                webapp._require_email(webapp.AppState(db_path=self.db))
+            self.assertIn("Settings", str(ctx.exception))
+
     def test_api_reports_demo_mode(self):
         seed_demo.seed(LISTINGS)
         state = webapp.AppState(db_path=self.db, demo=True)
