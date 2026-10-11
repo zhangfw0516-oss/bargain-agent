@@ -44,6 +44,17 @@ class TestDemoSeed(unittest.TestCase):
         self.assertIsNotNone(insight)
         self.assertEqual(insight["checks"], seed_demo.DAYS // seed_demo.EVERY_DAYS)
 
+    def test_reset_gives_a_new_instance_id(self):
+        # the page keys its saved Find results by this id, so a reset must change it
+        seed_demo.seed(LISTINGS)
+        first = webapp.api_tasks(webapp.AppState(db_path=self.db, demo=True))["instance"]
+        self.assertEqual(first, storage.instance_id(self.db))  # stable while the file lives
+        seed_demo.seed(LISTINGS)
+        self.assertNotEqual(first, webapp.api_tasks(webapp.AppState(db_path=self.db, demo=True))["instance"])
+        other = Path(self.dir.name) / "normal.db"
+        storage.init_db(other)
+        self.assertNotEqual(storage.instance_id(other), storage.instance_id(self.db))
+
     def test_api_reports_demo_mode(self):
         seed_demo.seed(LISTINGS)
         state = webapp.AppState(db_path=self.db, demo=True)

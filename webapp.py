@@ -86,6 +86,7 @@ class AppState:
         self.db_path = db_path
         #: Presentation database (demo/seed_demo.py): the UI shows a banner.
         self.demo = demo
+        self.instance = storage.instance_id(db_path)
         self.services = services or Services()
         self.csrf_token = secrets.token_urlsafe(24)
         self._lock = threading.Lock()
@@ -395,6 +396,7 @@ def api_tasks(state: AppState) -> dict[str, Any]:
         "serpapi_daily_limit": config.serpapi_daily_max_calls(),
         "daily_limits": {"serper": config.serper_daily_max_calls(), "serpapi": config.serpapi_daily_max_calls()},
         "demo": state.demo,
+        "instance": state.instance,
     }
 
 

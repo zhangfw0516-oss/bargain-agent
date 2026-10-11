@@ -1049,6 +1049,20 @@ def delete_stopped_task(task_id: int, db_path: Path | None = None) -> str:
         return "deleted"
 
 
+def instance_id(db_path: Path | None = None) -> str:
+    """A random id created with this database file.
+
+    The web page keys what it keeps in the browser (the last Find results) by it, so a
+    rebuilt demo database or a different database never shows another one's results.
+    """
+    import uuid
+
+    with _transaction(db_path) as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT OR IGNORE INTO app_meta (key, value) VALUES ('instance_id', ?)", (uuid.uuid4().hex[:16],))
+        return conn.execute("SELECT value FROM app_meta WHERE key = 'instance_id'").fetchone()["value"]
+
+
 def list_events(task_id: int | None = None, db_path: Path | None = None) -> list[dict[str, Any]]:
     if task_id is not None:
         return _fetchall(

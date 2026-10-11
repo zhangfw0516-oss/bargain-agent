@@ -55,7 +55,13 @@ def main() -> int:
         input("Press Enter to close.")
         return 1
     if _running():
+        if "--reset" in sys.argv[1:]:
+            print("Bargain Agent is still running, so the demo data was NOT reset.")
+            print("演示程序还开着，演示数据没有重置。请先关掉另一个黑色窗口，再双击“重置演示数据.bat”。")
+            input("Press Enter to close. / 按回车关闭。")
+            return 1
         print("Bargain Agent is already running; opening the browser.")
+        print("If that window is the other mode (demo / normal), close it first and start again.")
         webbrowser.open(URL)
         return 0
     httpd = webapp.serve(demo_db(), demo=True) if demo else webapp.serve()

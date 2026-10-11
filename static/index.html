@@ -520,13 +520,18 @@ async function runFindJob(path, body, buttons) {
     loadTasks();
   }
 }
-// keep the last results when the page is reloaded or the user comes back from a shop
+// keep the last results when the page is reloaded or the user comes back from a shop;
+// kept per database, so the demo and the normal app (same address) never share them
+let dbInstance = null;
+function lastFindKey() { return 'ba-last-find:' + dbInstance; }
 function saveLastFind(response) {
-  try { localStorage.setItem('ba-last-find', JSON.stringify({description: $('findDescription').value, response, saved: Date.now()})); } catch (e) {}
+  if (!dbInstance) return;
+  try { localStorage.setItem(lastFindKey(), JSON.stringify({description: $('findDescription').value, response, saved: Date.now()})); } catch (e) {}
 }
 function restoreLastFind() {
+  if (!dbInstance) return;
   let saved = null;
-  try { saved = JSON.parse(localStorage.getItem('ba-last-find') || 'null'); } catch (e) {}
+  try { localStorage.removeItem('ba-last-find'); saved = JSON.parse(localStorage.getItem(lastFindKey()) || 'null'); } catch (e) {}
   if (!saved || !saved.response || Date.now() - saved.saved > 24 * 3600 * 1000) return;
   $('findDescription').value = saved.description || '';
   findToken = saved.response.token;
@@ -741,6 +746,12 @@ async function loadTasks() {
   }
   renderMonitor(data.monitor);
   $('demoBanner').classList.toggle('hidden', !data.demo);
+  if (dbInstance && data.instance !== dbInstance) {  // the app restarted on another database
+    findToken = null; hidePreview(); closeDetail();
+    clear($('findRecommendations')); clear($('findTrace')); clear($('findNotes'));
+    $('refineBox').classList.add('hidden'); $('findStatus').textContent = '';
+  }
+  dbInstance = data.instance || null;
   $('taskCount').textContent = data.tasks.length;
   const box = $('taskRows'); clear(box);
   if (!data.tasks.length) {
@@ -1016,9 +1027,9 @@ async function boot() {
   let tab = 'find';
   try { tab = localStorage.getItem('ba-tab') || 'find'; } catch (e) {}
   showTab(['find', 'monitors', 'settings'].includes(tab) ? tab : 'find');
-  restoreLastFind();
   await api('/api/csrf');
   await loadTasks();
+  restoreLastFind();
   loadSetupStatus();
 }
 boot();

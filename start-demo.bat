@@ -7,7 +7,13 @@ if not exist "venv\Scripts\python.exe" (
   pause
   exit /b 1
 )
-if /i "%~1"=="reset" del /q demo.db 2>nul
+if /i "%~1"=="reset" (
+  "venv\Scripts\python.exe" -m demo.seed_demo
+  if errorlevel 1 (
+    pause
+    exit /b 1
+  )
+)
 if not exist demo.db "venv\Scripts\python.exe" -m demo.seed_demo
 if not exist demo.db (
   echo Could not build demo.db.

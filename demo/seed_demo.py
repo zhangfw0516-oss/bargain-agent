@@ -148,6 +148,13 @@ def seed(listings: dict) -> None:
 
 
 def main() -> int:
+    import socket
+
+    with socket.socket() as probe:
+        probe.settimeout(1.0)
+        if probe.connect_ex(("127.0.0.1", 8765)) == 0:
+            print("Bargain Agent is running; close its window first, then rebuild the demo data.")
+            return 1
     if "--refresh" in sys.argv[1:] or not LISTINGS.exists():
         LISTINGS.write_text(json.dumps(fetch_listings(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     seed(json.loads(LISTINGS.read_text(encoding="utf-8")))
