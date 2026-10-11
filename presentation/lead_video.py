@@ -268,9 +268,11 @@ def own_voice(beats: list[str]) -> list[Path]:
             raise SystemExit(f"Line {n + 1} has no recording yet; run presentation/record_voice.py.")
         clean = folder / f"{n:02d}.clean.wav"
         trim = "silenceremove=start_periods=1:start_threshold=-45dB"
-        subprocess.run([ffmpeg(), "-y", "-i", str(found[-1]), "-af",
-                        f"{trim},areverse,{trim},areverse,loudnorm=I=-16:TP=-1.5:LRA=11", "-ac", "1", "-ar", "48000",
-                        str(clean)], check=True, capture_output=True)
+        chain = f"{trim},areverse,{trim},areverse"
+        if "--keep-pauses" not in sys.argv:  # pauses over 0.6 s become 0.35 s; speech itself is untouched
+            chain += ",silenceremove=stop_periods=-1:stop_duration=0.6:stop_threshold=-32dB:stop_silence=0.35"
+        subprocess.run([ffmpeg(), "-y", "-i", str(found[-1]), "-af", f"{chain},loudnorm=I=-16:TP=-1.5:LRA=11",
+                        "-ac", "1", "-ar", "48000", str(clean)], check=True, capture_output=True)
         clips.append(clean)
     return clips
 
