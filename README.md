@@ -119,6 +119,7 @@ archive/           Historical docs and one-off scripts
 
 ## Docs
 
+- [Team responsibilities](docs/TEAM_RESPONSIBILITIES.md)
 - [Module interfaces](docs/INTERFACES.md)
 - [System context](docs/SYSTEM_CONTEXT.md)
 - [Evaluation](docs/EVALUATION.md)
