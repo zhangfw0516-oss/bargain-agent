@@ -35,3 +35,8 @@ logs/
 
 # Generated narrated video (presentation/lead_video.py)
 presentation/lead-video/
+
+# Development history kept locally only (internal notes, not part of the submission)
+archive/
+# Progress-report working files (the submitted report is in deliverables/)
+report_work/

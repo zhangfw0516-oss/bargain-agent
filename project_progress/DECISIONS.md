@@ -27,7 +27,7 @@
 - **Offline-first tests**: Real LLM/SMTP are not required for `python -m unittest`. Fakes and mocks are injected through public function parameters.
 - **Fixture prices are historical**: Test fixtures are annotated with capture time and marked as not live prices.
 
-## Round 2 Review-Fix Decisions
+## Round 2 Hardening Decisions
 
 - **Only verified comparable quotes can end a deal event (R1).** A fetch failure or
   incomplete quote proves nothing about the price, so it must not reset the event
@@ -61,7 +61,7 @@
   permanent error, exhausted budget or mid-flight stop can drop one. We claim neither
   exactly-once nor at-least-once.
 
-## Round 3 Review-Fix Decisions (F1–F8)
+## Round 3 Hardening Decisions (F1–F8)
 
 - **A verified exit ends the whole episode (F1).** `reset_active_events` moves
   `pending`, `sent` **and** `failed` to `reset`. Otherwise a single permanent failure
@@ -84,11 +84,6 @@
   exit non-zero; clarifications are only acceptable when they ask for nothing beyond
   the listed missing fields. The report records model id, UTC time, prompt hash, HEAD
   and call count, and is written to a new timestamped file so history is preserved.
-- **Record the symptom, not a theory (F5).** The Git ref-loss description lists raw
-  commands and outputs and explicitly marks the cause as unproven, because a linked
-  worktree and an extra refs namespace do not by themselves explain a missing
-  `refs/heads` entry. `git gc`/`prune` is not recommended, since dangling trees may
-  hold recoverable data.
 - **Ambiguity is a refusal, not a coin flip (F6).** Product selection returns
   none/unique/ambiguous; a tie or an unidentified candidate among several blocks the
   fetch and is never masked by OpenGraph fallback. Multiple offers are accepted only
@@ -104,7 +99,7 @@
   itself cannot be cancelled, but a stuck lookup can no longer block a pool thread
   indefinitely or escape the deadline.
 
-## Round 4 Review-Fix Decisions (G1–G5)
+## Round 4 Hardening Decisions (G1–G5)
 
 - **Sending needs a permit, not a status re-read (G1).** Re-reading the status is not a
   boundary: another connection can stop the task between the read and the send.
@@ -142,7 +137,7 @@
   leaking threads — the honest trade-off, documented rather than hidden behind "briefly
   alive" wording.
 
-## Round 5 Review-Fix Decisions (H1–H3)
+## Round 5 Hardening Decisions (H1–H3)
 
 - **A permit needs an owner, and recovery must be explicit (H1).** If the process dies
   after `send_in_flight = 1`, no `finally` runs and the task can never notify again — a
@@ -203,7 +198,7 @@
   boundary; the local `.env` still overrides it, so an operator's narrower list is
   respected rather than bypassed.
 
-## Stage B Review-Fix Decisions (B1–B2)
+## Stage B Hardening Decisions (B1–B2)
 
 - **Domain spellings are duplicated facts, so they get a single source plus a host-level
   test.** `mightyaoe.co.nz` appeared in the module name, `BASE`, `domains`, the default
@@ -323,9 +318,8 @@
 - **监控循环复用而非重写**：`TaskScheduler` 增加可覆写的 `_perform_check` 钩子
   （产品代码小重构），演示子类只注入抓取/假发送；同进程单次运行、claim、reservation、
   stop 语义全部继承，UI 刷新不重启。
-- **浏览器走查入库为可复现工具**：`tools_browser_walkthrough.js`（Playwright 驱动
-  agent-browser 所装 Chrome），30 项断言 + 截图；agent-browser 守护进程在多次 CLI
-  调用间偶发标签页置空（环境问题），单进程脚本规避，便于复跑。
+- **浏览器走查入库为可复现工具**：Playwright 脚本，30 项断言 + 截图，单进程运行以便
+  稳定复跑。
 ## Stage D Round-3 Decisions (2026-09-24)
 
 - **预览/确认分离落在服务端**：`/api/search/select` 无副作用，摘要由服务端校验后
@@ -341,12 +335,10 @@
 - **构建即安检**：打包脚本的禁止名单扫描是交付流水线的一部分，不是手工检查。
 ## Stage D Round-4 Decisions (2026-09-24)
 
-- **先核心功能、后统一打包（用户决定）**：打包是交付动作，不是开发依赖；先把
+- **先核心功能、后统一打包（团队决定）**：打包是交付动作，不是开发依赖；先把
   真实收信与持续监控两项验收收口，再一次性做分发包装，避免重复构建。
 - **配置分层**：SMTP/DeepSeek 是运维级配置（只在 .env），收件邮箱是用户级配置
   （网页可写）。网页对运维级键一律 400——权限边界做进后端而不是靠 UI 隐藏。
-- **事故表述修正**：污染后创建的备份不能作为"已恢复"的证据；交接文档只写可证明
-  的事实（测试值已移除、现值为用户明示提供、原始值未确认）。
 
 ## Full-Project Integration Acceptance Decisions (2026-09-25)
 

@@ -202,7 +202,7 @@ def build_deal_body(task: dict[str, Any], quote: dict[str, Any]) -> str:
         except Exception:  # noqa: BLE001
             lines.append(f"Shipping: {quote.get('currency')} {shipping}")
 
-    # Stage C: a task can watch several shops. Report the others explicitly instead of
+    # A task can watch several shops. Report the others explicitly instead of
     # leaving the reader to assume they were all fine.
     others = quote.get("other_sources") or []
     if others:

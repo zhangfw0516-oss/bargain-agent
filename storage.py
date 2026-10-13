@@ -142,7 +142,7 @@ def init_db(db_path: Path | None = None) -> None:
                 acquired_at TEXT NOT NULL
             );
 
-            -- Stage C: one monitoring task may watch several confirmed sources.
+            -- One monitoring task may watch several confirmed sources.
             CREATE TABLE IF NOT EXISTS task_sources (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id INTEGER NOT NULL,
@@ -176,7 +176,7 @@ def init_db(db_path: Path | None = None) -> None:
             "source_kind TEXT NOT NULL DEFAULT 'retailer_adapter'",
         )
 
-        # One-time backfill: a task created before Stage C has no source row. Give it
+        # One-time backfill: a task created before multi-shop monitoring has no source row. Give it
         # exactly one, derived from the URL it was already monitoring, so the old
         # single-URL flow keeps working unchanged. Guarded by "no rows exist for this
         # task", so re-running never duplicates and never touches tasks that already
@@ -541,8 +541,8 @@ def save_quote(
         return int(cursor.lastrowid)
 
 
-# --------------------------------------------------------------------------- Stage C
-# Task sources: one task, several confirmed shops.
+# --------------------------------------------------------------------------- task sources
+# One task, several confirmed shops.
 
 
 def add_task_source(
@@ -850,7 +850,7 @@ def try_begin_send(
     `owner` identifies the permit holder so that only that holder (or an explicit
     human recovery step) can release it.
 
-    Race guards for Stage C review fixes:
+    Race guards:
 
     - ``config_version``: pass the task version the check decided under. A threshold
       or comparison change bumps the version in the same transaction that ends the

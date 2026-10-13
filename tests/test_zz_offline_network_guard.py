@@ -12,7 +12,7 @@ Sealed boundaries (the full current egress surface):
 
 - DNS / low-level connect             — ``socket.getaddrinfo`` and
   ``socket.create_connection`` for any **non-loopback** host. The loopback is left
-  open because the Stage D web suite runs a real HTTP server on ``127.0.0.1``; every
+  open because the web UI tests run a real HTTP server on ``127.0.0.1``; every
   other hostname or public IP is refused before a packet leaves.
 - ``requests.Session``
 - module-level HTTP verbs             — ``requests.get`` / ``requests.post`` /
@@ -146,7 +146,7 @@ else:
 
 class TestSuiteStaysOffline(unittest.TestCase):
     def test_dns_and_connect_seals_block_non_loopback_but_allow_loopback(self):
-        # The loopback must stay open: the Stage D web suite binds a real server on
+        # The loopback must stay open: the web UI tests bind a real server on
         # 127.0.0.1/test-harness connects to it. Remote hosts must be refused.
         self.assertTrue(_is_loopback("127.0.0.1"))
         self.assertTrue(_is_loopback("localhost"))

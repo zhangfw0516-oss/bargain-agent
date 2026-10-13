@@ -1,6 +1,6 @@
 # Known issues
 
-Current as of 2026-10-04 (refactor branch `refactor/serpapi-ai-pipeline`). The pre-refactor list is in `archive/project_progress/KNOWN_ISSUES.md`.
+Current as of 2026-10-04 (refactor branch `refactor/serpapi-ai-pipeline`).
 
 ## Live verification (2026-10-04)
 

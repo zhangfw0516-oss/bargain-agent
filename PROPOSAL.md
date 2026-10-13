@@ -7,7 +7,7 @@
 ### Team Members
 | Role | Student ID | Name | Email |
 | :--- | :--- | :--- | :--- |
-| **Member 1 (Project Lead)** | 24009491 | Fengwei Zhang | Zephyri.fw@gamil.com |
+| **Member 1 (Project Lead)** | 24009491 | Fengwei Zhang | Zephyri.fw@gmail.com |
 | **Member 2 (Data Engineer)** | 24009365 | Gang Zhao | 3132057704@qq.com |
 | **Member 3 (Interface Developer)** | 24009350 | Tianshuo Gao | 3084083988@qq.com |
 | **Member 4 (Agent Developer & Test Engineer)** | 24009323 | Xiao Zhang | 274751389@qq.com |

@@ -6,7 +6,7 @@ An agentic AI system that finds products and monitors bargain prices across New 
 
 | Role | Name | Email |
 | :--- | :--- | :--- |
-| Project Lead | Fengwei Zhang (24009491) | Zephyri.fw@gamil.com |
+| Project Lead | Fengwei Zhang (24009491) | Zephyri.fw@gmail.com |
 | Data Engineer | Gang Zhao (24009365) | 3132057704@qq.com |
 | Interface Developer | Tianshuo Gao (24009350) | 3084083988@qq.com |
 | Agent Dev & Test | Xiao Zhang (24009323) | 274751389@qq.com |
@@ -33,7 +33,7 @@ flowchart LR
 - **All merchants are shown; trusted merchants trigger alerts** (`TRUSTED_MERCHANTS`, `ALERT_TRUSTED_ONLY`). Second-hand offers are rejected unless requested, and the offer-verifier agent can veto wrong models and bundles.
 - **Cost guards:** `SERPER_DAILY_MAX_CALLS`, `SERPAPI_DAILY_MAX_CALLS`, `FIND_MAX_QUERIES`, `MONITOR_MAX_SOURCES`, `MONITOR_MIN_FREQUENCY_MINUTES`.
 
-The app never buys anything and does not claim the lowest price on the whole web. Shipping is not included in prices.
+The app never buys anything and does not claim the lowest price on the whole web. Prices exclude shipping unless delivered-price comparison is turned on for a monitor.
 
 ## Quick start (Windows, Python 3.13)
 
@@ -114,7 +114,6 @@ config.py          .env configuration
 prompts/           Agent prompts
 evaluation/        Price, instruction and notification accuracy
 tests/             Offline test suite
-archive/           Historical docs and one-off scripts
 ```
 
 ## Docs

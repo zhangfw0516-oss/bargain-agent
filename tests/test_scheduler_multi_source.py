@@ -1,4 +1,4 @@
-"""Stage C tests: one task, many sources; aggregated checks; one alert per deal.
+"""Multi-shop tasks: one task, many sources; aggregated checks; one alert per deal.
 
 Everything here is offline. Fetching and sending are injected, so no network, LLM or
 SMTP call happens.
@@ -460,7 +460,7 @@ class TestModifyConditions(StageCTestCase):
 
 
 class TestSourceOwnership(StageCTestCase):
-    """Review fix 1: --enable/--disable must verify ownership before writing."""
+    """--enable/--disable must verify ownership before writing."""
 
     def test_storage_scoped_toggle_updates_only_the_owning_task(self):
         first = self.make_task()
@@ -526,7 +526,7 @@ class TestSourceOwnership(StageCTestCase):
 
 
 class TestConditionChangeRace(StageCTestCase):
-    """Review fix 3: an in-flight check must never send under old conditions."""
+    """An in-flight check must never send under old conditions."""
 
     def _two_source_task(self) -> dict:
         return self.make_task()

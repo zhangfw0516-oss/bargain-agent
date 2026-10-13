@@ -1,6 +1,6 @@
 # Module interfaces
 
-Current as of the SerpApi / multi-agent refactor (2026-10-04). The pre-refactor version is in `archive/docs/pre-refactor/`.
+Current as of the SerpApi / multi-agent refactor (2026-10-04).
 
 ## LLM — `llm.py`
 

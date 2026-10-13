@@ -16,8 +16,8 @@ PROPOSAL: progress oversight and milestones; overall architecture and System Con
 
 - **Architecture and integration:** `pipeline.py` (LangGraph Find pipeline), `llm.py` (the single validated LLM entry point), `config.py`, `config_setup.py`, `main.py`
 - **Packaging and delivery:** `build_package.py`, `launcher.py`, `start.bat`, `check-due.bat`, `start-demo.bat`, `record-voice.bat`, `requirements.txt`, `.env.example`, `.gitignore`, `.gitattributes`
-- **Documentation:** `README.md`, `PROPOSAL.md`, `PROJECT_HANDOVER.md`, `docs/SYSTEM_CONTEXT.md`, `docs/INTERFACES.md`, `docs/COURSE_DELIVERY_CHECKLIST.md`, `docs/EVALUATION.md` (consolidated results), `docs/TEAM_RESPONSIBILITIES.md`, `project_progress/DECISIONS.md`, `project_progress/KNOWN_ISSUES.md`
-- **Presentation and reports:** `presentation/` (scripts, narrated video, voice recorder), `report_work/`, `deliverables/`, `archive/`
+- **Documentation:** `README.md`, `PROPOSAL.md`, `docs/SYSTEM_CONTEXT.md`, `docs/INTERFACES.md`, `docs/EVALUATION.md` (consolidated results), `docs/TEAM_RESPONSIBILITIES.md`, `project_progress/DECISIONS.md`, `project_progress/KNOWN_ISSUES.md`
+- **Presentation and reports:** `presentation/` (scripts, narrated video, voice recorder), `deliverables/` (submitted reports)
 - **Test infrastructure and integration tests:** `tests/__init__.py`, `tests/fakes.py`, `tests/test_integration.py`, `tests/test_config.py`, `tests/test_llm.py`, `tests/test_zz_offline_network_guard.py`
 
 ## Gang Zhao · Data Engineer

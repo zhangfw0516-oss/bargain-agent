@@ -241,7 +241,7 @@ class TestCLI(unittest.TestCase):
         self.assertIn("cancelled", stdout.getvalue())
         self.assertEqual(storage.get_send_permit(task_id, db_path=self.db_path)["send_in_flight"], 1)
 
-    # ------------------------------------------------ Stage B closeout / Stage C: CLI
+    # ------------------------------------------------ multi-shop tasks: CLI
     def test_sources_lists_a_tasks_sources(self):
         task_id = self._create_task()
         with patch("sys.stdout", new=io.StringIO()) as stdout:
