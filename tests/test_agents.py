@@ -76,17 +76,25 @@ class TestSelect(unittest.TestCase):
 
 class TestDescribe(unittest.TestCase):
     def test_summaries_with_template_for_missing(self):
-        o, _ = opts({"describe.md": {"summaries": {"e1": "好手环", "zzz": "x"}}})
+        o, _ = opts({"describe.md": {"summaries": {"e1": {"en": "A good band.", "zh": "好手环"}, "zzz": "x"}}})
         result = describe.run("d", {}, EVIDENCE[:1] + EVIDENCE[2:], opts=o)
-        self.assertEqual(result.value["e1"], "好手环")
-        self.assertIn("价格未注明", result.value["e3"])
-        self.assertIn("商家未验证", result.value["e3"])
+        self.assertEqual(result.value["e1"], {"en": "A good band.", "zh": "好手环"})
+        self.assertIn("price not stated", result.value["e3"]["en"])
+        self.assertIn("unverified merchant", result.value["e3"]["en"])
+        self.assertIn("价格未注明", result.value["e3"]["zh"])
+        self.assertIn("商家未验证", result.value["e3"]["zh"])
+
+    def test_older_single_string_is_kept(self):
+        o, _ = opts({"describe.md": {"summaries": {"e1": "好手环"}}})
+        result = describe.run("d", {}, EVIDENCE[:1], opts=o)
+        self.assertEqual(result.value["e1"], {"en": "好手环", "zh": None})
 
     def test_fallback_templates(self):
         o, _ = opts({"describe.md": RuntimeError("x")})
         result = describe.run("d", {}, EVIDENCE[:1], opts=o)
         self.assertEqual(result.status, FALLBACK)
-        self.assertIn("229.00 NZD", result.value["e1"])
+        self.assertIn("229.00 NZD", result.value["e1"]["en"])
+        self.assertIn("229.00 NZD", result.value["e1"]["zh"])
 
 
 class TestPriceExtractor(unittest.TestCase):

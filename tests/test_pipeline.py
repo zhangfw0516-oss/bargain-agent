@@ -67,6 +67,14 @@ class TestRunFind(unittest.TestCase):
         self.assertEqual(out["stages"], {"understand": "ok", "rewrite": "ok", "search_1": "ok", "select": "ok", "describe": "ok"})
         self.assertEqual(shop.queries, ["fitbit charge 6", "fitness tracker"])
 
+    def test_summaries_are_english_with_a_chinese_version(self):
+        shop = FakeSearch("serpapi", [result("Fitbit Charge 6", "111", "229.00")], [])
+        replies = dict(ALL_OK, **{"select.md": {"selected": ["e1"]},
+                                  "describe.md": {"summaries": {"e1": {"en": "A black band.", "zh": "黑色手环。"}}}})
+        d, _ = deps(shop, llm=FakeLLM(replies))
+        rec = run_find("black band", deps=d)["recommendations"][0]
+        self.assertEqual((rec["summary"], rec["summary_zh"]), ("A black band.", "黑色手环。"))
+
     def test_stage_callback_reports_progress_including_retries(self):
         shop = FakeSearch("serpapi", [result("Case", "9", "20.00")], [result("Fitbit Charge 6", "111", "229.00")])
         llm = FakeLLM({

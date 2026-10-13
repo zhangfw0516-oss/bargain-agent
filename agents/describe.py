@@ -1,4 +1,4 @@
-"""Describe agent: a short Chinese summary per recommended product."""
+"""Describe agent: a short English summary, with a Chinese version, per recommended product."""
 
 from __future__ import annotations
 
@@ -26,28 +26,45 @@ def _item(rec: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in item.items() if v is not None}
 
 
-def clean(raw: Any, ids: set[str]) -> dict[str, str]:
+def _text(value: Any) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return " ".join(value.split())[:MAX_SUMMARY_CHARS]
+
+
+def clean(raw: Any, ids: set[str]) -> dict[str, dict[str, str | None]]:
+    """``{id: {"en": …, "zh": …}}``; a plain string (older format) is kept as ``en``."""
     if not isinstance(raw, dict) or not isinstance(raw.get("summaries"), dict):
         raise ValueError('expected {"summaries": {...}}')
-    out = {
-        key: " ".join(text.split())[:MAX_SUMMARY_CHARS]
-        for key, text in raw["summaries"].items()
-        if key in ids and isinstance(text, str) and text.strip()
-    }
+    out: dict[str, dict[str, str | None]] = {}
+    for key, value in raw["summaries"].items():
+        if key not in ids:
+            continue
+        if isinstance(value, dict):
+            en, zh = _text(value.get("en")), _text(value.get("zh"))
+        else:
+            en, zh = _text(value), None
+        if en or zh:
+            out[key] = {"en": en, "zh": zh}
     if not out:
         raise ValueError("no summary for any known id")
     return out
 
 
-def template(rec: dict[str, Any]) -> str:
-    parts = [rec.get("title") or "该商品"]
+def template(rec: dict[str, Any]) -> dict[str, str]:
+    title = rec.get("title")
+    en = [title or "This product"]
+    zh = [title or "该商品"]
     if rec.get("merchant"):
-        parts.append(f"商家 {rec['merchant']}" + ("" if rec.get("trusted") else "（商家未验证）"))
+        en.append(f"sold by {rec['merchant']}" + ("" if rec.get("trusted") else " (unverified merchant)"))
+        zh.append(f"商家 {rec['merchant']}" + ("" if rec.get("trusted") else "（商家未验证）"))
     if rec.get("price"):
-        parts.append(f"售价 {rec['price']} {rec.get('currency') or '（币种未注明）'}")
+        en.append(f"price {rec['price']} {rec.get('currency') or '(currency not stated)'}")
+        zh.append(f"售价 {rec['price']} {rec.get('currency') or '（币种未注明）'}")
     else:
-        parts.append("价格未注明")
-    return "，".join(parts) + "。"
+        en.append("price not stated")
+        zh.append("价格未注明")
+    return {"en": ", ".join(en) + ".", "zh": "，".join(zh) + "。"}
 
 
 def run(description: str, need: dict[str, Any] | None, recommendations: list[dict[str, Any]], *, opts: LLMOptions | None = None) -> AgentResult:

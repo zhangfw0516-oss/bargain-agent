@@ -341,7 +341,12 @@ def build_graph(deps: FindDeps):
             return {"recommendations": [], "stages": {"describe": SKIPPED}}
         result = describe_agent.run(state["description"], state.get("need"), recs, opts=deps.llm_for(describe_agent.NAME))
         for rec in recs:
-            rec["summary"] = result.value.get(rec["id"])
+            text = result.value.get(rec["id"]) or {}
+            if isinstance(text, str):  # older single-language format
+                text = {"en": text, "zh": None}
+            # English first; the Chinese version is shown underneath when there is one
+            rec["summary"] = text.get("en") or text.get("zh")
+            rec["summary_zh"] = text.get("zh") if text.get("en") else None
         return {"recommendations": recs, "stages": {"describe": result.status}, "notes": [result.note] if result.note else []}
 
     graph = StateGraph(FindState)

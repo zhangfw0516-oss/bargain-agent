@@ -156,6 +156,8 @@ def _fmt_recommendations(result: dict) -> str:
         lines.append(f"  {i}. {rec['title']} — {rec.get('merchant') or 'unknown'}: {price}{trust}{watch}")
         if rec.get("summary"):
             lines.append(f"     {rec['summary']}")
+        if rec.get("summary_zh"):
+            lines.append(f"     {rec['summary_zh']}")
     for note in result.get("notes") or []:
         lines.append(f"  note: {note}")
     return "\n".join(lines)
