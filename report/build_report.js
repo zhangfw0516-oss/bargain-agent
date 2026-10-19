@@ -157,7 +157,6 @@ const intro = [
     ["Xiao Zhang", "Find agents (Understand, Rewrite, Select, Describe) and same-product matching (`matching.py`, offer verifier)"],
     ["Wenhan Zhang", "Monitoring loop and deal decisions (`scheduler.py`), instruction parsing and price extraction agents, output validation (`schemas.py`)"],
   ], [2, 7]),
-  PLACEHOLDER("[Optional, from the report guide: a short statement of which member wrote which section of this report.]"),
   H2("1.5 Use of AI tools"),
   P("AI-assisted programming tools were used during the development of this project."),
 ];
@@ -387,8 +386,16 @@ const future = [
 
 const learning = [
   H1("11. Personal learning"),
-  P("Each team member wrote their own paragraph."),
-  ...team.flatMap(([name]) => [H3(name), PLACEHOLDER(`[To be written by ${name}: what you personally learned from the project, for example about the module you owned, a problem you solved, working in a team, or a technology you used for the first time. About 100–200 words.]`)]),
+  H3("Fengwei Zhang"),
+  P("The most important thing I learned as project lead was to test a design against reality early. Our proposal depended on scraping retailer websites, and only when the big shops blocked us did we see how fragile that plan was. Changing to search APIs late in the semester cost time, and next time I would check the data source in the first week. I also learned how much coordination depends on clear interfaces: once the boundaries between modules were written down, five people could work at the same time. Finally, I learned that \"the tests pass\" is not the same as \"the system is correct\". Our real price accuracy was only 60% at first, and it reached 100% only after I went through every wrong price and found its cause. Working with AI-assisted programming tools taught me that the design decisions and the checking still have to be done by us."),
+  H3("Gang Zhao"),
+  P("Working on the data part of the project taught me that collecting prices from the web is harder than it looks. I had expected scraping to be a technical problem, but anti-bot services such as DataDome made it a question of what is reliable and acceptable, which is why we moved to search APIs. I also learned that a price on a page is not always the price: superscript cents, prices before GST and Afterpay instalments all produced wrong numbers until they were handled. Structured data (JSON-LD) turned out to be the most reliable source. On the storage side, I learned how SQLite can keep a simple price history and how a 30-day low and average can be computed from it. I also became more aware of cost, because every API call counts against a daily limit."),
+  H3("Tianshuo Gao"),
+  P("Through the interface and notification part I learned that a usable tool needs more than correct results. A search takes up to a minute, so the page had to show progress instead of appearing frozen, which taught me how a background job and polling work together. I also learned about security for a local web app: why the server only listens on the user's own computer and why every request that changes data needs a CSRF token. On the email side, I learned how SMTP works with a Gmail app password. One lesson came from a real test: the first alert email arrived but was not noticed, so the subject was changed to make it stand out. It showed me that looking at the system from the user's side matters as much as making it work."),
+  H3("Xiao Zhang"),
+  P("Working on the agents taught me how to use a large language model inside a real system rather than as a chat tool. Splitting the Find task into small agents, each with one job, made every step easier to test and to replace, and LangGraph showed me how such steps can be connected as a graph with a retry. The biggest lesson was that a model can produce answers that sound right but are not true. Our solution was to let the Select agent choose only from listing IDs the server had seen, to validate every output, and to fall back to simple rules when the model fails. I also learned how much the wording of a prompt matters, including examples of requests the agent should refuse. Same-product matching showed me that rules and AI work best together."),
+  H3("Wenhan Zhang"),
+  P("Working on monitoring and testing taught me that a scheduled background task needs careful rules. A check must not run twice at the same time, an error must not leave a task stuck, and one price drop must send only one email, even if two checks happen together. The send permit in the database was a simple idea that solved this. I also learned the value of offline tests: by replacing the language model with a fake client, using recorded API responses and blocking real network calls, our tests became free and repeatable. Evaluating the alerts showed me what precision and recall mean in practice: precision tells you that no email was sent by mistake, and recall tells you that no real deal was missed. Measuring both gave us confidence that the alerts behave correctly."),
 ];
 
 const refs = [
