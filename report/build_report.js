@@ -126,7 +126,7 @@ const titlePage = [
   new Paragraph({ spacing: { after: 160 }, children: [new TextRun({ text: "Final Project Report", size: 28, bold: true })] }),
   new Paragraph({ spacing: { after: 600 }, children: [new TextRun({ text: "Massey University · Semester 2, 2026 · October 2026", size: 24, color: "46546A" })] }),
   ...TABLE("Project team", ["Name", "Student ID", "Role"], team, [3, 2, 4]),
-  new Paragraph({ spacing: { before: 200 }, children: [new TextRun({ text: "Supervisor: [supervisor name]", size: 22, color: "7A5A00", italics: true })] }),
+  new Paragraph({ spacing: { before: 200 }, children: [new TextRun({ text: "Supervisor: Dr Surangika Ranathunga", size: 22, color: "46546A" })] }),
 ];
 
 const contents = [
@@ -158,9 +158,8 @@ const intro = [
     ["Wenhan Zhang", "Monitoring loop and deal decisions (`scheduler.py`), instruction parsing and price extraction agents, output validation (`schemas.py`)"],
   ], [2, 7]),
   PLACEHOLDER("[Optional, from the report guide: a short statement of which member wrote which section of this report.]"),
-  H2("1.5 Use of generative AI"),
-  P("The team used AI coding assistants during development to help write and review code, tests and documentation, and to draft parts of this report. The team made the design decisions, checked the generated work, and verified the system through automated tests and real-data evaluation (Section 6). The agents inside Bargain Agent itself use the DeepSeek language model (DeepSeek, n.d.)."),
-  PLACEHOLDER("[Team: name the AI tools you used and adjust this statement to match the course policy.]"),
+  H2("1.5 Use of AI tools"),
+  P("AI-assisted programming tools were used during the development of this project."),
 ];
 
 const background = [
