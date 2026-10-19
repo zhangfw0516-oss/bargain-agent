@@ -1,0 +1,75 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+body { margin: 0; background: #ffffff; font-family: "Segoe UI", Arial, sans-serif; color: #18212b; }
+.fig { width: 1400px; padding: 40px; box-sizing: border-box; background: #ffffff; }
+.row { display: flex; gap: 18px; align-items: stretch; }
+.col { display: flex; flex-direction: column; gap: 14px; flex: 1; }
+.band { border: 1.5px solid #c9d1dc; border-left: 10px solid var(--c); border-radius: 10px; padding: 18px 24px; display: flex; align-items: center; gap: 24px; background: #fbfcfd; }
+.band b { width: 210px; font-size: 24px; }
+.band span { flex: 1; font-size: 20px; color: #46546a; }
+.band i { font-style: normal; font-size: 18px; font-weight: 600; color: var(--c); width: 170px; text-align: right; }
+.spine { width: 250px; background: #1d5f8c; color: #fff; border-radius: 10px; padding: 24px; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+.spine b { font-size: 24px; } .spine span { font-size: 18px; line-height: 1.5; color: #dbe9f4; }
+.ext { display: flex; gap: 14px; margin-top: 18px; }
+.ext div { flex: 1; border: 1.5px dashed #9aa6b5; border-radius: 10px; padding: 12px; text-align: center; font-size: 18px; color: #46546a; }
+.title { font-size: 18px; font-weight: 700; color: #6a7689; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; }
+.flow { display: flex; align-items: center; gap: 10px; }
+.box { border: 2px solid var(--c, #9aa6b5); border-radius: 10px; padding: 14px 10px; min-width: 150px; text-align: center; font-size: 20px; font-weight: 600; background: #fff; }
+.box small { display: block; font-size: 15px; font-weight: 400; color: #6a7689; margin-top: 4px; }
+.arr { font-size: 26px; color: #6a7689; }
+.note { font-size: 17px; color: #46546a; margin: 10px 0 0 340px; border: 2px dashed #9aa6b5; border-top: none; border-radius: 0 0 12px 12px; padding: 6px 12px; width: 520px; text-align: center; }
+.legend { display: flex; gap: 26px; margin-top: 22px; font-size: 17px; flex-wrap: wrap; }
+.legend span::before { content: ""; display: inline-block; width: 14px; height: 14px; border-radius: 3px; background: var(--c); margin-right: 8px; vertical-align: -2px; }
+.chart { display: grid; gap: 16px; }
+.bar-row { display: grid; grid-template-columns: 420px 1fr 160px; align-items: center; gap: 16px; font-size: 20px; }
+.track { height: 34px; background: #eef1f5; border-radius: 6px; position: relative; }
+.fill { height: 100%; border-radius: 6px; background: var(--c); }
+.val { font-weight: 700; font-variant-numeric: tabular-nums; }
+</style></head><body>
+
+<div class="fig" id="fig-architecture">
+  <div class="row">
+    <div class="spine"><b>Integration</b><span>pipeline.py<br>llm.py<br>config.py</span><span style="font-weight:600;color:#fff">Fengwei</span></div>
+    <div class="col">
+      <div class="band" style="--c:#2f7d4f"><b>Interface</b><span>Web UI (static/index.html, webapp.py) · CLI · alert email</span><i>Tianshuo</i></div>
+      <div class="band" style="--c:#8b3b78"><b>AI agents</b><span>8 agents · LangGraph Find pipeline · same-product matching</span><i>Xiao, Wenhan</i></div>
+      <div class="band" style="--c:#b2432f"><b>Monitoring</b><span>Scheduler · deal rules · send permits · one email per drop</span><i>Wenhan</i></div>
+      <div class="band" style="--c:#8a5a00"><b>Data</b><span>Serper · SerpApi · page readers · SQLite price history</span><i>Gang</i></div>
+    </div>
+  </div>
+  <div class="ext"><div>Google Shopping NZ<br>(Serper, SerpApi)</div><div>Shop pages<br>(Scrape.do, Firecrawl, Tavily)</div><div>Language model<br>(DeepSeek API)</div><div>Email<br>(Gmail SMTP)</div></div>
+</div>
+
+<div class="fig" id="fig-pipeline">
+  <div class="title">Find (LangGraph)</div>
+  <div class="flow">
+    <div class="box">Description</div><span class="arr">→</span>
+    <div class="box" style="--c:#8b3b78">Understand<small>agent</small></div><span class="arr">→</span>
+    <div class="box" style="--c:#8b3b78">Rewrite<small>agent</small></div><span class="arr">→</span>
+    <div class="box" style="--c:#8a5a00">Search<small>parallel API calls</small></div><span class="arr">→</span>
+    <div class="box" style="--c:#8b3b78">Select<small>agent, IDs only</small></div><span class="arr">→</span>
+    <div class="box" style="--c:#8b3b78">Describe<small>agent</small></div>
+  </div>
+  <div class="note">nothing suitable selected → back to Rewrite (bounded)</div>
+  <div class="title" style="margin-top:30px">Monitor</div>
+  <div class="flow">
+    <div class="box" style="--c:#8b3b78">Same product<small>rules + verifier</small></div><span class="arr">→</span>
+    <div class="box" style="--c:#8a5a00">SQLite task<small>≤ 5 merchants</small></div><span class="arr">→</span>
+    <div class="box" style="--c:#b2432f">Scheduled check<small>one shared search</small></div><span class="arr">→</span>
+    <div class="box" style="--c:#8b3b78">Offer verifier<small>veto only</small></div><span class="arr">→</span>
+    <div class="box" style="--c:#2f7d4f">Alert email<small>trusted shop, once</small></div>
+  </div>
+  <div class="legend"><span style="--c:#8b3b78">AI agent</span><span style="--c:#8a5a00">Data</span><span style="--c:#b2432f">Monitoring (code)</span><span style="--c:#2f7d4f">Interface / email</span></div>
+</div>
+
+<div class="fig" id="fig-evaluation">
+  <div class="chart">
+    <div class="bar-row"><span>Real prices, first run (9/15)</span><div class="track"><div class="fill" style="--c:#c98b4a;width:60%"></div></div><span class="val">60%</span></div>
+    <div class="bar-row"><span>Real prices, after fixes (14/14)</span><div class="track"><div class="fill" style="--c:#1d5f8c;width:100%"></div></div><span class="val">100%</span></div>
+    <div class="bar-row"><span>Price agent on shop pages (13/13)</span><div class="track"><div class="fill" style="--c:#1d5f8c;width:100%"></div></div><span class="val">100%</span></div>
+    <div class="bar-row"><span>Instruction parsing, full match (15/16)</span><div class="track"><div class="fill" style="--c:#1d5f8c;width:93.75%"></div></div><span class="val">93.8%</span></div>
+    <div class="bar-row"><span>Instruction parsing, fields</span><div class="track"><div class="fill" style="--c:#1d5f8c;width:98.1%"></div></div><span class="val">98.1%</span></div>
+    <div class="bar-row"><span>Alert precision and recall (10 scenarios)</span><div class="track"><div class="fill" style="--c:#1d5f8c;width:100%"></div></div><span class="val">1.0</span></div>
+  </div>
+</div>
+</body></html>

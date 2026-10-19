@@ -40,3 +40,7 @@ presentation/lead-video/
 archive/
 # Progress-report working files (the submitted report is in deliverables/)
 report_work/
+
+# Report build output
+report/node_modules/
+report/render/
