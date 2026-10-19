@@ -4,26 +4,26 @@ Current as of the SerpApi / multi-agent refactor (2026-10-04).
 
 ## LLM — `llm.py`
 
-| Function | Contract |
-| --- | --- |
+| Function                                                                                            | Contract                                                                                                                                                                                                                                                            |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `call_json(prompt_name, payload, *, validate=None, agent=None, client=None, model=None, retries=1)` | Loads `prompts/<prompt_name>`, sends `payload` (dicts as JSON) with `response_format=json_object`, parses JSON, runs `validate(data)`. Empty, truncated, non-JSON or invalid output is retried with the error fed back. Raises `LLMError` (never contains secrets). |
-| `make_client(agent=None) -> (client, model)` | Uses `config.llm_settings(agent)`: `LLM_*_<AGENT>` overrides, else global `LLM_*`. |
-| `is_configured(agent=None) -> bool` | All three settings present. |
+| `make_client(agent=None) -> (client, model)`                                                        | Uses `config.llm_settings(agent)`: `LLM_*_<AGENT>` overrides, else global `LLM_*`.                                                                                                                                                                                  |
+| `is_configured(agent=None) -> bool`                                                                 | All three settings present.                                                                                                                                                                                                                                         |
 
 ## Agents — `agents/`
 
 Every agent takes `opts: LLMOptions(client, model)` (tests inject fakes) and never fetches, writes or sends.
 
-| Agent | Call | Output | On model failure |
-| --- | --- | --- | --- |
-| understand | `run(description)` | `AgentResult(need dict)`: category, brand, model, key_specs, budget, currency, colour, use_case, condition, exclusions | `{}` / `fallback` |
-| rewrite | `run(description, need, *, max_queries, previous_queries=None, feedback=None)` | `AgentResult([query])` — no search operators | keyword query from need/description |
-| select | `run(description, need, evidence)` | `AgentResult([evidence id])` — only server ids | priced, new, trusted first |
-| describe | `run(description, need, recommendations)` | `AgentResult({id: 中文简介})` | template text |
-| task_parser | `run(instruction) -> dict` | `schemas.validate_task` output | raises `TaskParseError` |
-| price_extractor | `run(page_text) -> dict` | `schemas.validate_price_extraction` output | raises `PriceExtractionError` (also for "no clear price") |
-| offer_verifier | `run(product, offers)` | `AgentResult({offer id: (same/different/needs_confirmation/unverified, reason)})` | all `unverified` |
-| deal_summary | `run(task, quote) -> str or None` | email summary | `None` |
+| Agent           | Call                                                                           | Output                                                                                                                 | On model failure                                          |
+| --------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| understand      | `run(description)`                                                             | `AgentResult(need dict)`: category, brand, model, key_specs, budget, currency, colour, use_case, condition, exclusions | `{}` / `fallback`                                         |
+| rewrite         | `run(description, need, *, max_queries, previous_queries=None, feedback=None)` | `AgentResult([query])` — no search operators                                                                           | keyword query from need/description                       |
+| select          | `run(description, need, evidence)`                                             | `AgentResult([evidence id])` — only server ids                                                                         | priced, new, trusted first                                |
+| describe        | `run(description, need, recommendations)`                                      | `AgentResult({id: {"en": English summary, "zh": Chinese version}})`                                                    | template text in both languages                           |
+| task_parser     | `run(instruction) -> dict`                                                     | `schemas.validate_task` output                                                                                         | raises `TaskParseError`                                   |
+| price_extractor | `run(page_text) -> dict`                                                       | `schemas.validate_price_extraction` output                                                                             | raises `PriceExtractionError` (also for "no clear price") |
+| offer_verifier  | `run(product, offers)`                                                         | `AgentResult({offer id: (same/different/needs_confirmation/unverified, reason)})`                                      | all `unverified`                                          |
+| deal_summary    | `run(task, quote) -> str or None`                                              | email summary                                                                                                          | `None`                                                    |
 
 ## Find pipeline — `pipeline.py`
 
@@ -35,11 +35,11 @@ A recommendation: `id, title, link, merchant, price, currency, price_source (ser
 
 ## Providers — `sources/`
 
-| Protocol | Method | Implementations |
-| --- | --- | --- |
-| `ShoppingSearch` | `search(query, *, limit) -> [ShoppingResult]` | `SerpApi` (google_shopping), `Firecrawl` (supplement; carries `page_text`, no price) |
-| `OfferSource` | `offers(ProductRef) -> ([Offer], ProductRef)` | `SerpApi` (google_immersive_product by page token; on failure re-search by product id; the listing itself when Google shows no store list — `google_product` was retired by Google) |
-| `PageExtractor` | `extract(url) -> PageText or validated price dict` | `Firecrawl` (JSON-schema scrape), `TavilyExtract`, `ScrapeDo` (raw HTML → text + JSON-LD) |
+| Protocol         | Method                                             | Implementations                                                                                                                                                                     |
+| ---------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ShoppingSearch` | `search(query, *, limit) -> [ShoppingResult]`      | `Serper` (primary), `SerpApi` (google_shopping; backup through `FallbackShopping`), `Firecrawl` (supplement; carries `page_text`, no price)                                          |
+| `OfferSource`    | `offers(ProductRef) -> ([Offer], ProductRef)`      | `SerpApi` (google_immersive_product by page token; on failure re-search by product id; the listing itself when Google shows no store list — `google_product` was retired by Google) |
+| `PageExtractor`  | `extract(url) -> PageText or validated price dict` | `Firecrawl` (JSON-schema scrape), `TavilyExtract`, `ScrapeDo` (raw HTML → text + JSON-LD)                                                                                           |
 
 Errors: `NotConfigured`, `AuthError`, `RateLimited`, `QuotaExceeded`, `ProviderTimeout`, `Unavailable` (all `ProviderError`). `request_json` maps HTTP status and rebuilds transport errors without URLs. `registry.build_providers(before_call)` assembles configured providers; `before_call(name)` runs before each billable call.
 
@@ -76,23 +76,23 @@ Tables: `tasks`, `task_sources` (`source_kind` = `serpapi_product`/`url`, `produ
 
 All POSTs need matching `Host`, `Origin`, `csrftoken` cookie and `X-CSRF-Token`; bodies ≤ 64 KiB.
 
-| Route | Purpose |
-| --- | --- |
-| `GET /api/tasks` | tasks with latest seller quotes, monitor status, email warning, today's API usage |
-| `GET /api/tasks/{id}`, `/history` | detail, history, events |
-| `GET /api/setup/status` | missing keys only, provider status |
-| `POST /api/find` `{description, async?}` | run the pipeline; returns `token` + recommendations, or `{job}` with `async: true` (no writes) |
-| `GET /api/find/status?job=` | stages reached so far, then the find response |
-| `POST /api/find/refine` `{token, message, async?}` | refine an earlier find ("only black"): keeps its listings, ≤ 2 new searches, agents re-select; returns a new token and `followups` |
-| `POST /api/tasks/{id}/sources/shipping` `{source_id, shipping}` | set or clear (`""`) a merchant's shipping cost |
-| `POST /api/find/preview` `{token, rec_id}` | the product's sellers + `matches` at other merchants (≤ 1 extra search), suggested target (no writes) |
-| `POST /api/find/confirm` `{token, rec_id, target_price, comparison, currency, frequency_minutes, extra_ids, drop_percent}` | creates the task with the chosen listing plus selected matches (capped); idempotent per token + rec |
-| `POST /api/tasks/add` `{instruction}` or explicit fields | direct URL task |
-| `POST /api/tasks/{id}/check` `{confirm: true}` | check now (may email) |
-| `POST /api/check/due` `{confirm: true}` | check all due tasks |
-| `POST /api/tasks/{id}/pause|resume|stop|modify` | lifecycle / conditions |
-| `POST /api/tasks/{id}/sources/enable|disable` `{source_id}` | source toggle (ownership checked) |
-| `POST /api/monitor/start` `{confirm: true}`, `/stop` | continuous monitoring (once per process) |
-| `POST /api/setup` `{DEFAULT_NOTIFY_EMAIL}` | the only setting writable from the page |
+| Route                                                                                                                      | Purpose                                                                                                                            |                                   |          |                        |
+| -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | -------- | ---------------------- |
+| `GET /api/tasks`                                                                                                           | tasks with latest seller quotes, monitor status, email warning, today's API usage                                                  |                                   |          |                        |
+| `GET /api/tasks/{id}`, `/history`                                                                                          | detail, history, events                                                                                                            |                                   |          |                        |
+| `GET /api/setup/status`                                                                                                    | missing keys only, provider status                                                                                                 |                                   |          |                        |
+| `POST /api/find` `{description, async?}`                                                                                   | run the pipeline; returns `token` + recommendations, or `{job}` with `async: true` (no writes)                                     |                                   |          |                        |
+| `GET /api/find/status?job=`                                                                                                | stages reached so far, then the find response                                                                                      |                                   |          |                        |
+| `POST /api/find/refine` `{token, message, async?}`                                                                         | refine an earlier find ("only black"): keeps its listings, ≤ 2 new searches, agents re-select; returns a new token and `followups` |                                   |          |                        |
+| `POST /api/tasks/{id}/sources/shipping` `{source_id, shipping}`                                                            | set or clear (`""`) a merchant's shipping cost                                                                                     |                                   |          |                        |
+| `POST /api/find/preview` `{token, rec_id}`                                                                                 | the product's sellers + `matches` at other merchants (≤ 1 extra search), suggested target (no writes)                              |                                   |          |                        |
+| `POST /api/find/confirm` `{token, rec_id, target_price, comparison, currency, frequency_minutes, extra_ids, drop_percent}` | creates the task with the chosen listing plus selected matches (capped); idempotent per token + rec                                |                                   |          |                        |
+| `POST /api/tasks/add` `{instruction}` or explicit fields                                                                   | direct URL task                                                                                                                    |                                   |          |                        |
+| `POST /api/tasks/{id}/check` `{confirm: true}`                                                                             | check now (may email)                                                                                                              |                                   |          |                        |
+| `POST /api/check/due` `{confirm: true}`                                                                                    | check all due tasks                                                                                                                |                                   |          |                        |
+| \`POST /api/tasks/{id}/pause                                                                                               | resume                                                                                                                             | stop                              | modify\` | lifecycle / conditions |
+| \`POST /api/tasks/{id}/sources/enable                                                                                      | disable` `{source_id}\`                                                                                                            | source toggle (ownership checked) |          |                        |
+| `POST /api/monitor/start` `{confirm: true}`, `/stop`                                                                       | continuous monitoring (once per process)                                                                                           |                                   |          |                        |
+| `POST /api/setup` `{DEFAULT_NOTIFY_EMAIL}`                                                                                 | the only setting writable from the page                                                                                            |                                   |          |                        |
 
 `Services` injects `find`, `product_offers`, `observer`, `verifier`, `send_fn`, `parse_task`, `provider_status`.

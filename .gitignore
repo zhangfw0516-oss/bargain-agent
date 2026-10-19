@@ -44,3 +44,7 @@ report_work/
 # Report build output
 report/node_modules/
 report/render/
+
+# Personal presentation notes (not part of the submission)
+presentation/fengwei-talk-notes.html
+bargain_agent.db.pre-v1.bak

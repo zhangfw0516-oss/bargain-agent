@@ -2,13 +2,13 @@
 
 Who owns which part of the final system, and which files belong to it. Roles follow [PROPOSAL.md](../PROPOSAL.md) §8 and the team table in the [README](../README.md), adjusted to the final architecture: retailer scraping became search APIs, and eight AI agents were added. Each person presents the part they own in the final demo (see `presentation/`).
 
-| Member | Role | Owns | Presents (demo order) |
-| :--- | :--- | :--- | :--- |
-| Fengwei Zhang | Project Lead | Architecture, integration, configuration, packaging and delivery, documentation, evaluation summary, presentation | 1 · Purpose, design, evaluation results, engineering |
-| Tianshuo Gao | Interface Developer | Web UI and API, CLI task management, email notifications | 2 · Live Find and refine |
-| Xiao Zhang | Agent Developer & Test | Find agents, same-product matching | 3 · Agents and same-product matching |
-| Gang Zhao | Data Engineer | Search providers, price observation, price database, demo data, real price collection | 4 · Data sources and price history |
-| Wenhan Zhang | Agent Developer & Test | Monitoring scheduler, deal decisions, instruction parsing, price extraction, output validation | 5 · Alerts, tests, limits and summary |
+| Member        | Role                   | Owns                                                                                                              | Presents (demo order)                                |
+| :------------ | :--------------------- | :---------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------- |
+| Fengwei Zhang | Project Lead           | Architecture, integration, configuration, packaging and delivery, documentation, evaluation summary, presentation | 1 · Purpose, design, evaluation results, engineering |
+| Tianshuo Gao  | Interface Developer    | Web UI and API, CLI task management, email notifications                                                          | 2 · Live Find and refine                             |
+| Xiao Zhang    | Agent Developer & Test | Find agents, same-product matching                                                                                | 3 · Agents and same-product matching                 |
+| Gang Zhao     | Data Engineer          | Search providers, price observation, price database, demo data, real price collection                             | 4 · Data sources and price history                   |
+| Wenhan Zhang  | Agent Developer & Test | Monitoring scheduler, deal decisions, instruction parsing, price extraction, output validation                    | 5 · Alerts, tests, limits and summary                |
 
 ## Fengwei Zhang · Project Lead
 
