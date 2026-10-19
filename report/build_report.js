@@ -415,8 +415,8 @@ const references = [
   H1("References"),
   ...refs.map((r) => new Paragraph({ children: runs(r), spacing: { after: 140, line: 280 }, indent: { left: 720, hanging: 720 } })),
   H2("Source code"),
-  P("The complete source code is submitted separately with this report as `BargainAgent-source.zip` (without API keys). `README.md` explains how to run it, and `docs/` contains the architecture, interfaces and evaluation details."),
-  PLACEHOLDER("[If the code is published to GitHub before submission, add the repository link here.]"),
+  P("Software repository (branch `final`): **https://github.com/zhangfw0516-oss/bargain-agent/tree/final**"),
+  P("The repository contains the complete source code and its development history, from the first retailer adapters to the final system. `README.md` explains how to run it, `docs/` contains the architecture, interfaces and evaluation details, and `.env.example` lists the settings. API keys are not stored in the repository; each user provides their own in a local `.env` file."),
 ];
 
 // ---------------------------------------------------------------- document
